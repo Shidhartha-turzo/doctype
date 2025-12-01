@@ -1,0 +1,28 @@
+# Core
+Django==5.2.8
+python-decouple==3.8
+
+# API
+djangorestframework==3.15.2
+djangorestframework-simplejwt==5.3.1
+
+# CORS
+django-cors-headers==4.6.0
+
+# Database
+psycopg2-binary==2.9.10
+
+# Static files
+whitenoise==6.8.2
+
+# Security
+django-ratelimit==4.1.0
+
+# Monitoring
+sentry-sdk==2.19.2
+
+# Swagger/OpenAPI
+drf-spectacular==0.27.2
+
+# Search
+django-filter==24.3

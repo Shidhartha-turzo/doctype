@@ -1,0 +1,24 @@
+[tool.black]
+line-length = 88
+target-version = ['py314']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | venv
+  | \.eggs
+  | \.tox
+  | dist
+  | migrations
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 88
+skip = [".venv", "venv", "migrations"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "doctype.settings"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
