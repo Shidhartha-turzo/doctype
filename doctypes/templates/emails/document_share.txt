@@ -1,0 +1,30 @@
+DOCUMENT SHARED WITH YOU
+========================
+
+Hello,
+
+{{ sender_name }} ({{ sender_email }}) has shared a document with you.
+
+DOCUMENT DETAILS
+----------------
+Document: {{ document_name }}
+Type: {{ doctype_name }}
+Shared by: {{ sender_name }}
+{% if document.created_at %}Created: {{ document.created_at|date:"F d, Y" }}{% endif %}
+
+{% if personal_message %}
+PERSONAL MESSAGE FROM {{ sender_name|upper }}
+{{ "=" | ljust:50 }}
+{{ personal_message }}
+
+{% endif %}
+VIEW DOCUMENT
+-------------
+{{ share_url }}
+
+---
+Sent via Doctype Engine
+{{ site_name }} - Dynamic Document Management System
+
+This email was sent to {{ recipient_email }}.
+If you believe this was sent in error, please ignore this message.

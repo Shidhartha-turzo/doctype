@@ -11,6 +11,9 @@ urlpatterns = [
     path('search/<slug:slug>/', views.search_documents, name='search_documents'),
     path('schema/openapi/', views.openapi_schema, name='openapi_schema'),
 
+    # Document sharing API
+    path('documents/<int:document_id>/share/', views.share_document, name='share_document'),
+
     # Dynamic Form Views
     path('<slug:doctype_slug>/', views.document_list, name='document_list'),
     path('<slug:doctype_slug>/create/', views.document_create, name='document_create'),

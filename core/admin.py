@@ -28,6 +28,22 @@ class SystemSettingsAdmin(admin.ModelAdmin):
             'fields': ('session_timeout', 'max_sessions_per_user',
                       'session_refresh_on_activity')
         }),
+        ('Email Settings - Outgoing (SMTP)', {
+            'fields': ('enable_email', 'email_backend', 'email_host', 'email_port',
+                      'email_use_tls', 'email_use_ssl', 'email_host_user',
+                      'email_host_password', 'email_from_address', 'email_from_name'),
+            'description': 'Configure outgoing email settings for sending documents and notifications'
+        }),
+        ('Email Settings - Incoming (IMAP)', {
+            'fields': ('enable_incoming_email', 'imap_host', 'imap_port',
+                      'imap_use_ssl', 'imap_username', 'imap_password'),
+            'description': 'Configure incoming email for document creation via email',
+            'classes': ('collapse',)
+        }),
+        ('Email Features', {
+            'fields': ('allow_document_sharing', 'email_rate_limit'),
+            'description': 'Control email-based features and rate limiting'
+        }),
         ('Password Policy', {
             'fields': ('min_password_length', 'require_uppercase', 'require_lowercase',
                       'require_digit', 'require_special_char', 'password_expiry_days',

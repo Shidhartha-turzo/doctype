@@ -98,12 +98,25 @@ WSGI_APPLICATION = 'doctype.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/dev/ref/settings/#databases
 
+# Temporarily using SQLite - run ./setup_database_macos.sh to setup PostgreSQL
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
+
+# PostgreSQL configuration (uncomment after running setup_database_macos.sh)
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': config('DB_NAME', default='doctype_db'),
+#         'USER': config('DB_USER', default='doctype_user'),
+#         'PASSWORD': config('DB_PASSWORD', default='doctype_password'),
+#         'HOST': config('DB_HOST', default='localhost'),
+#         'PORT': config('DB_PORT', default='5432'),
+#     }
+# }
 
 
 # Password validation

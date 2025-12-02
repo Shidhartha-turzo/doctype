@@ -207,6 +207,8 @@
                     <th>{{ field.label|default:field.name }}</th>
                     {% endfor %}
                     <th>Created</th>
+                    <th>Updated At</th>
+                    <th>Updated By</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -216,12 +218,12 @@
                     <td><strong>{{ document.name }}</strong></td>
                     {% for field in fields %}
                     <td>
-                        {% with value=document.data|default:dict %}
-                            {{ value|get_item:field.name|default:"-" }}
-                        {% endwith %}
+                        {{ document.data|get_item:field.name|default:"-" }}
                     </td>
                     {% endfor %}
                     <td>{{ document.created_at|date:"Y-m-d H:i" }}</td>
+                    <td>{{ document.updated_at|date:"Y-m-d H:i" }}</td>
+                    <td>{{ document.modified_by.username|default:"-" }}</td>
                     <td>
                         <div class="actions-cell">
                             <a href="{% url 'document_edit' doctype.slug document.id %}" class="btn btn-secondary btn-sm">Edit</a>

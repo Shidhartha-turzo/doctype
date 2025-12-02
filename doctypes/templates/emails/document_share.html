@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Shared With You</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        .content {
+            padding: 30px 20px;
+        }
+        .greeting {
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        .document-info {
+            background-color: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .document-info h2 {
+            margin: 0 0 10px 0;
+            font-size: 20px;
+            color: #333;
+        }
+        .document-info .meta {
+            color: #666;
+            font-size: 14px;
+            margin: 5px 0;
+        }
+        .document-info .meta strong {
+            color: #333;
+        }
+        .message-box {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .message-box p {
+            margin: 0;
+            color: #856404;
+        }
+        .message-box strong {
+            display: block;
+            margin-bottom: 8px;
+            color: #856404;
+        }
+        .button-container {
+            text-align: center;
+            margin: 30px 0;
+        }
+        .button {
+            display: inline-block;
+            padding: 14px 32px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 16px;
+            transition: transform 0.2s;
+        }
+        .button:hover {
+            transform: translateY(-2px);
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+            border-top: 1px solid #e9ecef;
+        }
+        .footer p {
+            margin: 5px 0;
+        }
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📄 Document Shared With You</h1>
+        </div>
+
+        <div class="content">
+            <p class="greeting">Hello,</p>
+
+            <p><strong>{{ sender_name }}</strong> ({{ sender_email }}) has shared a document with you.</p>
+
+            <div class="document-info">
+                <h2>{{ document_name }}</h2>
+                <p class="meta"><strong>Document Type:</strong> {{ doctype_name }}</p>
+                <p class="meta"><strong>Shared by:</strong> {{ sender_name }}</p>
+                {% if document.created_at %}
+                <p class="meta"><strong>Created:</strong> {{ document.created_at|date:"F d, Y" }}</p>
+                {% endif %}
+            </div>
+
+            {% if personal_message %}
+            <div class="message-box">
+                <strong>Personal message from {{ sender_name }}:</strong>
+                <p>{{ personal_message }}</p>
+            </div>
+            {% endif %}
+
+            <div class="button-container">
+                <a href="{{ share_url }}" class="button">View Document</a>
+            </div>
+
+            <p style="color: #666; font-size: 14px; margin-top: 20px;">
+                If the button doesn't work, copy and paste this link into your browser:<br>
+                <a href="{{ share_url }}" style="color: #667eea; word-break: break-all;">{{ share_url }}</a>
+            </p>
+        </div>
+
+        <div class="footer">
+            <p><strong>Sent via Doctype Engine</strong></p>
+            <p>{{ site_name }} - Dynamic Document Management System</p>
+            <p style="margin-top: 10px;">
+                This email was sent to {{ recipient_email }}. If you believe this was sent in error, please ignore this message.
+            </p>
+        </div>
+    </div>
+</body>
+</html>

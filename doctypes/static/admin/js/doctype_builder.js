@@ -14,6 +14,10 @@
     // Initialize immediately or on page load
     function initialize() {
         console.log('Doctype Field Builder initializing...');
+        console.log('window.doctypeFields:', window.doctypeFields);
+        console.log('window.fieldTypes:', window.fieldTypes);
+        console.log('window.childDoctypes:', window.childDoctypes);
+        console.log('window.allDoctypes:', window.allDoctypes);
         initFieldBuilder();
         attachEventListeners();
         console.log('Doctype Field Builder initialized with', fields.length, 'fields');
@@ -33,11 +37,61 @@
             fields = window.doctypeFields;
         }
 
+        // Initialize schema field with empty fields array if empty
+        const schemaField = document.getElementById('id_schema');
+        if (schemaField && !schemaField.value.trim()) {
+            schemaField.value = JSON.stringify({fields: []}, null, 2);
+        }
+
+        // Populate doctype dropdowns
+        populateDoctypeDropdowns();
+
         // Render fields
         renderFields();
 
         // Update hidden schema field
         updateSchemaField();
+    }
+
+    function populateDoctypeDropdowns() {
+        console.log('Populating doctype dropdowns...');
+        console.log('All Doctypes:', window.allDoctypes);
+        console.log('Child Doctypes:', window.childDoctypes);
+
+        // Populate link doctype dropdown with all doctypes
+        const linkDoctypeSelect = document.getElementById('link-doctype');
+        if (linkDoctypeSelect && window.allDoctypes) {
+            linkDoctypeSelect.innerHTML = '<option value="">-- Select Doctype --</option>';
+            window.allDoctypes.forEach(doctype => {
+                const option = document.createElement('option');
+                option.value = doctype;
+                option.textContent = doctype;
+                linkDoctypeSelect.appendChild(option);
+            });
+            console.log(`Link doctype dropdown populated with ${window.allDoctypes.length} options`);
+        }
+
+        // Populate child doctype dropdown with only child doctypes
+        const childDoctypeSelect = document.getElementById('child-doctype');
+        if (childDoctypeSelect && window.childDoctypes) {
+            childDoctypeSelect.innerHTML = '<option value="">-- Select Child Doctype --</option>';
+            if (window.childDoctypes.length === 0) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = '(No child doctypes available - create one first)';
+                option.disabled = true;
+                childDoctypeSelect.appendChild(option);
+                console.log('Child doctype dropdown: No child doctypes available');
+            } else {
+                window.childDoctypes.forEach(doctype => {
+                    const option = document.createElement('option');
+                    option.value = doctype;
+                    option.textContent = doctype;
+                    childDoctypeSelect.appendChild(option);
+                });
+                console.log(`Child doctype dropdown populated with ${window.childDoctypes.length} options:`, window.childDoctypes);
+            }
+        }
     }
 
     function attachEventListeners() {
@@ -357,14 +411,20 @@
 
             // Type-specific fields
             if (fieldData.link_doctype) {
-                document.getElementById('link-doctype').value = fieldData.link_doctype;
+                // Wait for next tick to ensure dropdown is populated
+                setTimeout(() => {
+                    document.getElementById('link-doctype').value = fieldData.link_doctype;
+                }, 0);
             }
             if (fieldData.options) {
                 const opts = Array.isArray(fieldData.options) ? fieldData.options.join(', ') : fieldData.options;
                 document.getElementById('select-options-input').value = opts;
             }
             if (fieldData.child_doctype) {
-                document.getElementById('child-doctype').value = fieldData.child_doctype;
+                // Wait for next tick to ensure dropdown is populated
+                setTimeout(() => {
+                    document.getElementById('child-doctype').value = fieldData.child_doctype;
+                }, 0);
             }
             if (fieldData.formula) {
                 document.getElementById('formula').value = fieldData.formula;
@@ -446,14 +506,33 @@
 
         // Add type-specific data
         if (fieldData.type === 'link') {
-            fieldData.link_doctype = document.getElementById('link-doctype').value.trim();
+            const linkDoctype = document.getElementById('link-doctype').value.trim();
+            if (!linkDoctype) {
+                alert('Please select a Link Doctype');
+                return;
+            }
+            fieldData.link_doctype = linkDoctype;
         } else if (fieldData.type === 'select' || fieldData.type === 'multiselect') {
             const optionsStr = document.getElementById('select-options-input').value.trim();
+            if (!optionsStr) {
+                alert('Please enter options for the select field');
+                return;
+            }
             fieldData.options = optionsStr.split(',').map(o => o.trim()).filter(o => o);
         } else if (fieldData.type === 'table') {
-            fieldData.child_doctype = document.getElementById('child-doctype').value.trim();
+            const childDoctype = document.getElementById('child-doctype').value.trim();
+            if (!childDoctype) {
+                alert('Please select a Child Doctype. Make sure you have created a child doctype first (with is_child checked).');
+                return;
+            }
+            fieldData.child_doctype = childDoctype;
         } else if (fieldData.type === 'computed') {
-            fieldData.formula = document.getElementById('formula').value.trim();
+            const formula = document.getElementById('formula').value.trim();
+            if (!formula) {
+                alert('Please enter a formula for the computed field');
+                return;
+            }
+            fieldData.formula = formula;
         }
 
         // Clean up empty strings

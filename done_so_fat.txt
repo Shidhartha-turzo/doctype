@@ -62,5 +62,5 @@ What is Implemented
   Once the server is running, you can access the API at http://127.0.0.1:8000/api/.
 
 
-spoofman
+s_man
 admin123!

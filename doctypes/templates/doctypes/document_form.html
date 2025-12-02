@@ -235,6 +235,25 @@
                         {{ field.description|default:'Enable this option' }}
                     </label>
 
+                {% elif field.type == 'link' %}
+                    <select
+                        name="{{ field.name }}"
+                        id="id_{{ field.name }}"
+                        class="form-control"
+                        {% if field.required %}required{% endif %}
+                        {% if field.readonly %}disabled{% endif %}
+                    >
+                        <option value="">-- Select {{ field.link_doctype }} --</option>
+                        {% for link_doc in link_field_options|get_item:field.name %}
+                        <option value="{{ link_doc.id }}"
+                            {% if document %}
+                                {% if document.data|get_item:field.name == link_doc.name %}selected{% endif %}
+                            {% endif %}>
+                            {{ link_doc.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+
                 {% elif field.type == 'select' or field.type == 'multiselect' %}
                     <select
                         name="{{ field.name }}"

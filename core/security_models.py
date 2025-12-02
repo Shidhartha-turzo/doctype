@@ -98,6 +98,97 @@ class SystemSettings(models.Model):
         validators=[MinValueValidator(1), MaxValueValidator(50)],
         help_text="Maximum concurrent sessions per user"
     )
+
+    # Email Configuration - Outgoing
+    enable_email = models.BooleanField(
+        default=False,
+        help_text="Enable email functionality"
+    )
+    email_backend = models.CharField(
+        max_length=255,
+        default='django.core.mail.backends.smtp.EmailBackend',
+        help_text="Email backend (SMTP, Console, etc.)"
+    )
+    email_host = models.CharField(
+        max_length=255,
+        default='smtp.gmail.com',
+        blank=True,
+        help_text="SMTP server hostname"
+    )
+    email_port = models.IntegerField(
+        default=587,
+        validators=[MinValueValidator(1), MaxValueValidator(65535)],
+        help_text="SMTP server port"
+    )
+    email_use_tls = models.BooleanField(
+        default=True,
+        help_text="Use TLS encryption"
+    )
+    email_use_ssl = models.BooleanField(
+        default=False,
+        help_text="Use SSL encryption (mutually exclusive with TLS)"
+    )
+    email_host_user = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="SMTP username/email address"
+    )
+    email_host_password = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="SMTP password (stored encrypted)"
+    )
+    email_from_address = models.EmailField(
+        blank=True,
+        help_text="Default 'From' email address"
+    )
+    email_from_name = models.CharField(
+        max_length=255,
+        default='Doctype Engine',
+        help_text="Default 'From' name"
+    )
+
+    # Email Configuration - Incoming (IMAP)
+    enable_incoming_email = models.BooleanField(
+        default=False,
+        help_text="Enable incoming email processing"
+    )
+    imap_host = models.CharField(
+        max_length=255,
+        default='imap.gmail.com',
+        blank=True,
+        help_text="IMAP server hostname"
+    )
+    imap_port = models.IntegerField(
+        default=993,
+        validators=[MinValueValidator(1), MaxValueValidator(65535)],
+        help_text="IMAP server port"
+    )
+    imap_use_ssl = models.BooleanField(
+        default=True,
+        help_text="Use SSL for IMAP connection"
+    )
+    imap_username = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="IMAP username/email address"
+    )
+    imap_password = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="IMAP password (stored encrypted)"
+    )
+
+    # Email Features
+    allow_document_sharing = models.BooleanField(
+        default=True,
+        help_text="Allow users to share documents via email"
+    )
+    email_rate_limit = models.IntegerField(
+        default=50,
+        validators=[MinValueValidator(1), MaxValueValidator(1000)],
+        help_text="Maximum emails per user per hour"
+    )
     session_refresh_on_activity = models.BooleanField(
         default=True,
         help_text="Refresh session timeout on user activity"
@@ -237,6 +328,8 @@ class SystemSettings(models.Model):
         """Ensure only one instance exists (Single doctype pattern)"""
         self.pk = 1
         super().save(*args, **kwargs)
+        # Update Django email settings when saved
+        self.configure_email_settings()
 
     @classmethod
     def get_settings(cls):
@@ -249,6 +342,33 @@ class SystemSettings(models.Model):
         if not self.ip_whitelist:
             return True  # Empty whitelist means all allowed
         return ip_address in self.ip_whitelist
+
+    def configure_email_settings(self):
+        """Configure Django email settings from SystemSettings"""
+        from django.conf import settings
+        if self.enable_email:
+            settings.EMAIL_BACKEND = self.email_backend
+            settings.EMAIL_HOST = self.email_host
+            settings.EMAIL_PORT = self.email_port
+            settings.EMAIL_USE_TLS = self.email_use_tls
+            settings.EMAIL_USE_SSL = self.email_use_ssl
+            settings.EMAIL_HOST_USER = self.email_host_user
+            settings.EMAIL_HOST_PASSWORD = self.email_host_password
+            settings.DEFAULT_FROM_EMAIL = f"{self.email_from_name} <{self.email_from_address}>"
+
+    def get_email_config(self):
+        """Get email configuration as dict"""
+        return {
+            'enabled': self.enable_email,
+            'backend': self.email_backend,
+            'host': self.email_host,
+            'port': self.email_port,
+            'use_tls': self.email_use_tls,
+            'use_ssl': self.email_use_ssl,
+            'username': self.email_host_user,
+            'from_email': self.email_from_address,
+            'from_name': self.email_from_name,
+        }
 
 
 class LoginAttempt(models.Model):

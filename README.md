@@ -952,6 +952,24 @@ ab -n 1000 -c 10 http://localhost:8000/api/endpoint/
 locust -f locustfile.py --host=http://localhost:8000
 ```
 
+## Production Deployment
+
+For production deployment with PostgreSQL:
+
+```bash
+# Quick setup (macOS)
+./setup_database_macos.sh
+
+# Or see full documentation
+# INSTALL_POSTGRESQL.md for quick start
+# POSTGRESQL_SETUP.md for complete guide
+```
+
+For web server deployment, use:
+- **Gunicorn** + **Nginx** (recommended)
+- **uWSGI** + **Nginx**
+- Or any WSGI-compatible server
+
 ## Additional Documentation
 
 ### Core Documentation
@@ -961,12 +979,17 @@ locust -f locustfile.py --host=http://localhost:8000
 
 ### Getting Started
 - [QUICKSTART_10MIN.md](QUICKSTART_10MIN.md) - Build your first app in 10 minutes
+- [ITEM_DOCTYPE_SETUP_GUIDE.md](ITEM_DOCTYPE_SETUP_GUIDE.md) - Step-by-step guide to create an Item doctype
 - [REAL_WORLD_APPLICATIONS.md](REAL_WORLD_APPLICATIONS.md) - 6 complete use case examples
 
 ### Feature Guides
 - [VISUAL_FIELD_BUILDER.md](VISUAL_FIELD_BUILDER.md) - Drag-and-drop schema designer guide
 - [SECURITY_SUMMARY.md](SECURITY_SUMMARY.md) - Quick security reference
 - [PRODUCTION_LOGGING.md](PRODUCTION_LOGGING.md) - Production logging & change management guide
+
+### Distribution & Deployment
+- [INSTALL_POSTGRESQL.md](INSTALL_POSTGRESQL.md) - Quick PostgreSQL setup
+- [POSTGRESQL_SETUP.md](POSTGRESQL_SETUP.md) - Complete PostgreSQL documentation
 
 ### Project Information
 - [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) - Complete project overview and status

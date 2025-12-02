@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Doctype, Document
+from .models import Doctype, Document, DocumentShare
 
 
 class DoctypeSerializer(serializers.ModelSerializer):
@@ -143,3 +143,36 @@ class DynamicDocumentSerializer(serializers.Serializer):
         instance.data = validated_data
         instance.save()
         return instance
+
+
+class DocumentShareSerializer(serializers.ModelSerializer):
+    """Serializer for document sharing"""
+    shared_by_username = serializers.CharField(source='shared_by.username', read_only=True)
+    document_name = serializers.CharField(source='document.name', read_only=True)
+    doctype_name = serializers.CharField(source='document.doctype.name', read_only=True)
+
+    class Meta:
+        model = DocumentShare
+        fields = [
+            'id', 'document', 'document_name', 'doctype_name',
+            'shared_by', 'shared_by_username', 'recipient_email', 'recipient_name',
+            'personal_message', 'share_url', 'status',
+            'sent_at', 'opened_at'
+        ]
+        read_only_fields = ['id', 'shared_by', 'status', 'sent_at', 'opened_at']
+
+
+class BulkShareSerializer(serializers.Serializer):
+    """Serializer for bulk document sharing"""
+    recipient_emails = serializers.ListField(
+        child=serializers.EmailField(),
+        min_length=1,
+        max_length=50,
+        help_text="List of recipient email addresses (max 50)"
+    )
+    personal_message = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=1000,
+        help_text="Optional personal message to include in the email"
+    )

@@ -5,7 +5,7 @@ from django.utils.html import format_html
 from django.template.response import TemplateResponse
 from django import forms
 import json
-from .models import Doctype, Document, Module
+from .models import Doctype, Document, Module, DocumentShare, DocumentLink, DocumentLinkMultiple
 from .engine_models import (
     DoctypePermission, DocumentVersion, Workflow, WorkflowState, WorkflowTransition,
     DocumentWorkflowState, NamingSeries, DoctypeHook, CustomField, Report
@@ -31,19 +31,49 @@ class DoctypeAdminForm(forms.ModelForm):
             'schema': forms.HiddenInput(),  # Hide the raw JSON field
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # For new instances, set initial values
+        if not self.instance.pk:
+            # Initialize schema with empty fields array if not set
+            if not self.initial.get('schema'):
+                self.initial['schema'] = {'fields': []}
+
+            # Set default values from model
+            if not self.initial.get('status'):
+                self.initial['status'] = 'draft'
+            if not self.initial.get('version'):
+                self.initial['version'] = 1
+
+        # Make slug not required in form since it's auto-generated
+        if 'slug' in self.fields:
+            self.fields['slug'].required = False
+
+        # Make created_by not required since it's auto-set
+        if 'created_by' in self.fields:
+            self.fields['created_by'].required = False
+
+    def clean(self):
+        cleaned_data = super().clean()
+        # Ensure schema is initialized
+        if not cleaned_data.get('schema'):
+            cleaned_data['schema'] = {'fields': []}
+        return cleaned_data
+
 
 @admin.register(Doctype)
 class DoctypeAdmin(admin.ModelAdmin):
     form = DoctypeAdminForm
-    list_display = ['name', 'slug', 'module', 'status', 'is_submittable', 'track_changes', 'version', 'is_active', 'view_link']
-    list_filter = ['status', 'module', 'is_active', 'is_submittable', 'is_single', 'is_child', 'track_changes']
+    list_display = ['name', 'slug', 'module', 'status', 'created_by', 'created_at', 'updated_at', 'version', 'is_active', 'view_link']
+    list_filter = ['status', 'module', 'is_active', 'is_submittable', 'is_single', 'is_child', 'track_changes', 'created_by']
     search_fields = ['name', 'slug', 'description']
-    readonly_fields = ['slug', 'created_at', 'updated_at']
+    readonly_fields = ['slug', 'version', 'created_at', 'updated_at', 'api_link_button']
     list_editable = ['status', 'is_active']
 
     fieldsets = (
         ('Basic Information', {
-            'fields': ('name', 'slug', 'description', 'module', 'icon', 'color')
+            'fields': ('name', 'slug', 'description', 'module', 'icon', 'color', 'api_link_button')
         }),
         ('Type & Features', {
             'fields': ('is_submittable', 'is_single', 'is_child', 'is_tree', 'track_changes', 'track_views')
@@ -79,6 +109,19 @@ class DoctypeAdmin(admin.ModelAdmin):
         return '-'
     view_link.short_description = 'Actions'
 
+    def api_link_button(self, obj):
+        """Add a button to view the API endpoint for this doctype"""
+        if obj.slug:
+            api_url = f'/api/core/{obj.slug}/'
+            return format_html(
+                '<a href="{}" target="_blank" class="button" style="padding: 8px 12px; background-color: #417690; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">'
+                '📡 View API Endpoint'
+                '</a>',
+                api_url
+            )
+        return '-'
+    api_link_button.short_description = 'API Endpoint'
+
     def get_urls(self):
         """Add custom URL patterns for slug-based access"""
         urls = super().get_urls()
@@ -110,7 +153,8 @@ class DoctypeAdmin(admin.ModelAdmin):
 
     def change_view(self, request, object_id, form_url='', extra_context=None):
         """Override change view to add field builder context"""
-        extra_context = extra_context or {}
+        if extra_context is None:
+            extra_context = {}
 
         if object_id:
             obj = self.get_object(request, object_id)
@@ -125,16 +169,34 @@ class DoctypeAdmin(admin.ModelAdmin):
                     'duration', 'computed'
                 ]
 
+                # Get available child doctypes and all doctypes for links
+                child_doctypes = list(Doctype.objects.filter(is_child=True, is_active=True).values_list('name', flat=True))
+                all_doctypes = list(Doctype.objects.filter(is_active=True).values_list('name', flat=True))
+
                 # Pass both JSON and list versions
-                extra_context['doctype_fields_json'] = json.dumps(fields)
-                extra_context['field_types_json'] = json.dumps(field_types)
-                extra_context['field_types'] = field_types  # For template loop
+                extra_context.update({
+                    'doctype_fields_json': json.dumps(fields),
+                    'field_types_json': json.dumps(field_types),
+                    'field_types': field_types,
+                    'child_doctypes_json': json.dumps(child_doctypes),
+                    'all_doctypes_json': json.dumps(all_doctypes),
+                })
 
         return super().change_view(request, object_id, form_url, extra_context)
 
+    def save_model(self, request, obj, form, change):
+        """Override save_model to set created_by and handle auto fields"""
+        if not change:  # Only on creation
+            obj.created_by = request.user
+            if not obj.version:
+                obj.version = 1
+        super().save_model(request, obj, form, change)
+
     def add_view(self, request, form_url='', extra_context=None):
         """Override add view to add field builder context"""
-        extra_context = extra_context or {}
+        if extra_context is None:
+            extra_context = {}
+
         field_types = [
             'string', 'text', 'integer', 'decimal', 'boolean', 'date', 'datetime',
             'json', 'link', 'select', 'multiselect', 'table', 'file', 'image',
@@ -142,18 +204,26 @@ class DoctypeAdmin(admin.ModelAdmin):
             'duration', 'computed'
         ]
 
+        # Get available child doctypes and all doctypes for links
+        child_doctypes = list(Doctype.objects.filter(is_child=True, is_active=True).values_list('name', flat=True))
+        all_doctypes = list(Doctype.objects.filter(is_active=True).values_list('name', flat=True))
+
         # Pass both JSON and list versions
-        extra_context['doctype_fields_json'] = json.dumps([])
-        extra_context['field_types_json'] = json.dumps(field_types)
-        extra_context['field_types'] = field_types  # For template loop
+        extra_context.update({
+            'doctype_fields_json': json.dumps([]),
+            'field_types_json': json.dumps(field_types),
+            'field_types': field_types,
+            'child_doctypes_json': json.dumps(child_doctypes),
+            'all_doctypes_json': json.dumps(all_doctypes),
+        })
 
         return super().add_view(request, form_url, extra_context)
 
 
 @admin.register(Document)
 class DocumentAdmin(admin.ModelAdmin):
-    list_display = ['id', 'name', 'doctype', 'docstatus', 'created_by', 'created_at', 'version_number']
-    list_filter = ['doctype', 'docstatus', 'is_deleted', 'created_at']
+    list_display = ['id', 'name', 'doctype', 'docstatus', 'created_by', 'created_at', 'modified_by', 'updated_at', 'version_number']
+    list_filter = ['doctype', 'docstatus', 'is_deleted', 'created_at', 'updated_at', 'modified_by']
     search_fields = ['name', 'data']
     readonly_fields = ['created_at', 'updated_at', 'version_number']
 
@@ -223,3 +293,43 @@ class ReportAdmin(admin.ModelAdmin):
     list_display = ['name', 'doctype', 'report_type', 'is_public', 'created_by', 'created_at']
     list_filter = ['doctype', 'report_type', 'is_public']
     search_fields = ['name', 'description']
+
+
+@admin.register(DocumentShare)
+class DocumentShareAdmin(admin.ModelAdmin):
+    list_display = ['document', 'recipient_email', 'shared_by', 'status', 'sent_at', 'opened_at']
+    list_filter = ['status', 'sent_at', 'shared_by']
+    search_fields = ['recipient_email', 'recipient_name', 'document__name']
+    readonly_fields = ['sent_at', 'opened_at']
+    date_hierarchy = 'sent_at'
+
+
+@admin.register(DocumentLink)
+class DocumentLinkAdmin(admin.ModelAdmin):
+    list_display = ['source_document', 'field_name', 'target_document', 'created_at', 'created_by']
+    list_filter = ['field_name', 'created_at', 'source_document__doctype', 'target_document__doctype']
+    search_fields = ['source_document__name', 'target_document__name', 'field_name']
+    readonly_fields = ['created_at']
+    raw_id_fields = ['source_document', 'target_document', 'created_by']
+    date_hierarchy = 'created_at'
+
+    fieldsets = (
+        ('Link Information', {
+            'fields': ('source_document', 'field_name', 'target_document')
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'created_by'),
+            'classes': ('collapse',)
+        }),
+    )
+
+
+@admin.register(DocumentLinkMultiple)
+class DocumentLinkMultipleAdmin(admin.ModelAdmin):
+    list_display = ['source_document', 'field_name', 'target_document', 'order', 'created_at']
+    list_filter = ['field_name', 'created_at', 'source_document__doctype', 'target_document__doctype']
+    search_fields = ['source_document__name', 'target_document__name', 'field_name']
+    readonly_fields = ['created_at']
+    raw_id_fields = ['source_document', 'target_document']
+    list_editable = ['order']
+    date_hierarchy = 'created_at'

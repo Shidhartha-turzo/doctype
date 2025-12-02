@@ -33,6 +33,17 @@ db.sqlite3-journal
 .DS_Store
 Thumbs.db
 
+# Build artifacts (DMG, EXE, etc.)
+*.dmg
+*.exe
+*.zip
+*.spec
+build_*.py
+build_*.sh
+app_launcher.py
+dist_simple/
+DoctypeEngine*/
+
 # Environment variables
 .env
 .env.local

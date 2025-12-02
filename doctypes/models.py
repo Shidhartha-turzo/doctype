@@ -123,6 +123,13 @@ class Doctype(models.Model):
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = slugify(self.name)
+
+        # Initialize schema with empty fields if not set
+        if not self.schema:
+            self.schema = {'fields': []}
+        elif isinstance(self.schema, dict) and 'fields' not in self.schema:
+            self.schema['fields'] = []
+
         self.validate_schema()
         super().save(*args, **kwargs)
 
@@ -243,3 +250,207 @@ class Document(models.Model):
     def save(self, *args, **kwargs):
         self.validate_data()
         super().save(*args, **kwargs)
+
+    def get_link(self, field_name):
+        """Get the linked document for a link field"""
+        try:
+            link = self.outgoing_links.get(field_name=field_name)
+            return link.target_document
+        except:
+            return None
+
+    def set_link(self, field_name, target_document, user=None):
+        """
+        Set a link to another document
+
+        Args:
+            field_name: Name of the link field
+            target_document: Document instance to link to (or None to remove link)
+            user: User creating the link
+        """
+        from .models import DocumentLink
+
+        # Remove existing link if any
+        self.outgoing_links.filter(field_name=field_name).delete()
+
+        # Create new link if target provided
+        if target_document:
+            DocumentLink.objects.create(
+                source_document=self,
+                target_document=target_document,
+                field_name=field_name,
+                created_by=user
+            )
+
+    def get_linked_documents(self, field_name):
+        """Get all documents linked from this document (for multiselect)"""
+        return [link.target_document for link in self.multi_links_out.filter(field_name=field_name)]
+
+    def get_child_documents(self):
+        """Get all child documents (for table fields)"""
+        return self.children.filter(is_deleted=False).order_by('id')
+
+    def get_parent_document(self):
+        """Get parent document if this is a child"""
+        return self.parent_document
+
+    def get_referencing_documents(self):
+        """Get all documents that link to this document"""
+        return [link.source_document for link in self.incoming_links.all()]
+
+
+class DocumentShare(models.Model):
+    """
+    Track document sharing via email
+    """
+    SHARE_STATUS_CHOICES = [
+        ('sent', 'Sent'),
+        ('delivered', 'Delivered'),
+        ('opened', 'Opened'),
+        ('failed', 'Failed'),
+    ]
+
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='shares')
+    shared_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='shared_documents')
+    recipient_email = models.EmailField()
+    recipient_name = models.CharField(max_length=255, blank=True)
+
+    personal_message = models.TextField(blank=True)
+    share_url = models.URLField(blank=True)
+
+    status = models.CharField(max_length=20, choices=SHARE_STATUS_CHOICES, default='sent')
+    sent_at = models.DateTimeField(auto_now_add=True)
+    opened_at = models.DateTimeField(null=True, blank=True)
+
+    # Tracking
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-sent_at']
+        indexes = [
+            models.Index(fields=['document', 'recipient_email']),
+            models.Index(fields=['shared_by', '-sent_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.document} shared with {self.recipient_email}"
+
+
+class DocumentLink(models.Model):
+    """
+    Proper database relationship for Link fields
+    Enables Many-to-One and One-to-One relationships between documents
+
+    Example: If Order has a 'customer' link field pointing to Customer doctype,
+    this model stores that relationship in the database.
+    """
+    # Source document (the document that has the link field)
+    source_document = models.ForeignKey(
+        Document,
+        on_delete=models.CASCADE,
+        related_name='outgoing_links',
+        help_text="Document that contains the link field"
+    )
+
+    # Target document (the document being linked to)
+    target_document = models.ForeignKey(
+        Document,
+        on_delete=models.PROTECT,  # Prevent deletion of linked documents
+        related_name='incoming_links',
+        help_text="Document being linked to"
+    )
+
+    # Field information
+    field_name = models.CharField(
+        max_length=255,
+        help_text="Name of the link field in the source document"
+    )
+
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='created_links'
+    )
+
+    class Meta:
+        ordering = ['source_document', 'field_name']
+        indexes = [
+            models.Index(fields=['source_document', 'field_name']),
+            models.Index(fields=['target_document']),
+        ]
+        # Ensure one link per field per document
+        unique_together = [['source_document', 'field_name']]
+
+    def __str__(self):
+        return f"{self.source_document} -> {self.field_name} -> {self.target_document}"
+
+    def save(self, *args, **kwargs):
+        """Validate that field exists and is a link field"""
+        schema = self.source_document.doctype.schema
+        fields = schema.get('fields', [])
+
+        # Find the field in schema
+        field_config = next((f for f in fields if f['name'] == self.field_name), None)
+
+        if not field_config:
+            raise ValidationError(f"Field '{self.field_name}' does not exist in {self.source_document.doctype.name}")
+
+        if field_config.get('type') != 'link':
+            raise ValidationError(f"Field '{self.field_name}' is not a link field")
+
+        # Validate that target document matches the linked doctype
+        link_doctype_name = field_config.get('link_doctype')
+        if link_doctype_name and self.target_document.doctype.name != link_doctype_name:
+            raise ValidationError(
+                f"Target document must be of type '{link_doctype_name}', "
+                f"got '{self.target_document.doctype.name}'"
+            )
+
+        super().save(*args, **kwargs)
+
+        # Update JSON data to include the link
+        if self.source_document.data is None:
+            self.source_document.data = {}
+        self.source_document.data[self.field_name] = self.target_document.name
+        self.source_document.save()
+
+
+class DocumentLinkMultiple(models.Model):
+    """
+    For handling Many-to-Many relationships (multiselect link fields)
+
+    Example: If Project has 'team_members' multiselect link field pointing to User doctype,
+    this model stores multiple user links for one project.
+    """
+    source_document = models.ForeignKey(
+        Document,
+        on_delete=models.CASCADE,
+        related_name='multi_links_out'
+    )
+
+    target_document = models.ForeignKey(
+        Document,
+        on_delete=models.PROTECT,
+        related_name='multi_links_in'
+    )
+
+    field_name = models.CharField(max_length=255)
+
+    # Order for maintaining sequence
+    order = models.IntegerField(default=0)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['source_document', 'field_name', 'order']
+        indexes = [
+            models.Index(fields=['source_document', 'field_name']),
+            models.Index(fields=['target_document']),
+        ]
+
+    def __str__(self):
+        return f"{self.source_document} -> {self.field_name}[{self.order}] -> {self.target_document}"

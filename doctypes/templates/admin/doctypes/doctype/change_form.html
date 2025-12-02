@@ -42,13 +42,13 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="field-name">Field Name (Internal)*</label>
-                        <input type="text" id="field-name" name="name" required
+                        <input type="text" id="field-name" required
                                placeholder="e.g., customer_name" pattern="[a-z_]+">
                         <small>Lowercase letters and underscores only</small>
                     </div>
                     <div class="form-group">
                         <label for="field-label">Label (Display)*</label>
-                        <input type="text" id="field-label" name="label" required
+                        <input type="text" id="field-label" required
                                placeholder="e.g., Customer Name">
                     </div>
                 </div>
@@ -56,7 +56,7 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="field-type">Field Type*</label>
-                        <select id="field-type" name="type" required>
+                        <select id="field-type" required>
                             {% for field_type in field_types %}
                             <option value="{{ field_type }}">{{ field_type|title }}</option>
                             {% endfor %}
@@ -64,7 +64,7 @@
                     </div>
                     <div class="form-group">
                         <label for="field-default">Default Value</label>
-                        <input type="text" id="field-default" name="default"
+                        <input type="text" id="field-default"
                                placeholder="Optional default value">
                     </div>
                 </div>
@@ -72,19 +72,19 @@
                 <div class="form-row">
                     <div class="form-group checkbox-group">
                         <label>
-                            <input type="checkbox" id="field-required" name="required">
+                            <input type="checkbox" id="field-required">
                             Required Field
                         </label>
                     </div>
                     <div class="form-group checkbox-group">
                         <label>
-                            <input type="checkbox" id="field-unique" name="unique">
+                            <input type="checkbox" id="field-unique">
                             Unique Values
                         </label>
                     </div>
                     <div class="form-group checkbox-group">
                         <label>
-                            <input type="checkbox" id="field-readonly" name="readonly">
+                            <input type="checkbox" id="field-readonly">
                             Read Only
                         </label>
                     </div>
@@ -94,15 +94,17 @@
                 <div id="link-options" class="type-specific-options" style="display: none;">
                     <div class="form-group">
                         <label for="link-doctype">Link to Doctype*</label>
-                        <input type="text" id="link-doctype" name="link_doctype"
-                               placeholder="e.g., Customer">
+                        <select id="link-doctype">
+                            <option value="">-- Select Doctype --</option>
+                        </select>
+                        <small>Select which doctype this field links to</small>
                     </div>
                 </div>
 
                 <div id="select-options" class="type-specific-options" style="display: none;">
                     <div class="form-group">
                         <label for="select-options-input">Options (comma-separated)*</label>
-                        <input type="text" id="select-options-input" name="options"
+                        <input type="text" id="select-options-input"
                                placeholder="e.g., Active, Inactive, Pending">
                         <small>Separate options with commas</small>
                     </div>
@@ -111,15 +113,17 @@
                 <div id="table-options" class="type-specific-options" style="display: none;">
                     <div class="form-group">
                         <label for="child-doctype">Child Doctype*</label>
-                        <input type="text" id="child-doctype" name="child_doctype"
-                               placeholder="e.g., Order Item">
+                        <select id="child-doctype">
+                            <option value="">-- Select Child Doctype --</option>
+                        </select>
+                        <small>Select a doctype marked as "is_child"</small>
                     </div>
                 </div>
 
                 <div id="computed-options" class="type-specific-options" style="display: none;">
                     <div class="form-group">
                         <label for="formula">Formula*</label>
-                        <input type="text" id="formula" name="formula"
+                        <input type="text" id="formula"
                                placeholder="e.g., sum(items.amount)">
                         <small>Examples: quantity * rate, sum(items.total), date_diff(end_date, start_date)</small>
                     </div>
@@ -127,7 +131,7 @@
 
                 <div class="form-group">
                     <label for="field-description">Description / Help Text</label>
-                    <textarea id="field-description" name="description" rows="2"
+                    <textarea id="field-description" rows="2"
                               placeholder="Optional description to help users"></textarea>
                 </div>
             </div>
@@ -143,5 +147,7 @@
     // Pass Django context to JavaScript
     window.doctypeFields = {{ doctype_fields_json|safe }};
     window.fieldTypes = {{ field_types_json|safe }};
+    window.childDoctypes = {{ child_doctypes_json|safe }};
+    window.allDoctypes = {{ all_doctypes_json|safe }};
 </script>
 {% endblock %}

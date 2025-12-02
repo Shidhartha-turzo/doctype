@@ -8,8 +8,11 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.views.decorators.http import require_http_methods
 from drf_spectacular.utils import extend_schema, OpenApiParameter
-from .models import Doctype, Document
-from .serializers import DoctypeSerializer, DoctypeListSerializer, DynamicDocumentSerializer
+from .models import Doctype, Document, DocumentShare
+from .serializers import (
+    DoctypeSerializer, DoctypeListSerializer, DynamicDocumentSerializer,
+    DocumentShareSerializer, BulkShareSerializer
+)
 import json
 from decimal import Decimal
 from datetime import datetime
@@ -183,6 +186,118 @@ def openapi_schema(request):
     return Response(schema)
 
 
+@extend_schema(
+    request=BulkShareSerializer,
+    responses={200: dict},
+    parameters=[
+        OpenApiParameter('document_id', int, description='Document ID to share', location=OpenApiParameter.PATH)
+    ]
+)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def share_document(request, document_id):
+    """
+    Share a document via email
+
+    Send a document to one or multiple email addresses with an optional personal message.
+    Rate limiting applies based on SystemSettings.
+    """
+    from core.email_service import EmailService
+    from core.security_models import SystemSettings
+    from django.conf import settings
+
+    # Get document
+    document = get_object_or_404(Document, id=document_id)
+
+    # Check if email is enabled
+    system_settings = SystemSettings.get_settings()
+    if not system_settings.enable_email:
+        return Response(
+            {'error': 'Email functionality is disabled. Please enable it in System Settings.'},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+
+    if not system_settings.allow_document_sharing:
+        return Response(
+            {'error': 'Document sharing is disabled. Please enable it in System Settings.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    # Validate request data
+    serializer = BulkShareSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    recipient_emails = serializer.validated_data['recipient_emails']
+    personal_message = serializer.validated_data.get('personal_message', '')
+
+    # Check rate limit
+    if not EmailService.check_rate_limit(request.user, 'document_share'):
+        return Response(
+            {'error': 'Email rate limit exceeded. Please try again later.'},
+            status=status.HTTP_429_TOO_MANY_REQUESTS
+        )
+
+    # Generate share URL
+    share_url = f"{getattr(settings, 'SITE_URL', 'http://localhost:8000')}/doctypes/{document.doctype.slug}/documents/{document.id}/"
+
+    # Send emails and track shares
+    results = {
+        'success_count': 0,
+        'failed_count': 0,
+        'total': len(recipient_emails),
+        'shares': []
+    }
+
+    for recipient_email in recipient_emails:
+        try:
+            # Send email
+            email_sent = EmailService.send_document_share_email(
+                document=document,
+                recipient_email=recipient_email,
+                sender=request.user,
+                message=personal_message,
+                share_url=share_url
+            )
+
+            # Track the share
+            share_status = 'sent' if email_sent else 'failed'
+            document_share = DocumentShare.objects.create(
+                document=document,
+                shared_by=request.user,
+                recipient_email=recipient_email,
+                personal_message=personal_message,
+                share_url=share_url,
+                status=share_status,
+                ip_address=request.META.get('REMOTE_ADDR'),
+                user_agent=request.META.get('HTTP_USER_AGENT', '')
+            )
+
+            if email_sent:
+                results['success_count'] += 1
+            else:
+                results['failed_count'] += 1
+
+            results['shares'].append({
+                'id': document_share.id,
+                'recipient_email': recipient_email,
+                'status': share_status
+            })
+
+        except Exception as e:
+            results['failed_count'] += 1
+            results['shares'].append({
+                'recipient_email': recipient_email,
+                'status': 'failed',
+                'error': str(e)
+            })
+
+    return Response({
+        'message': f'Document shared with {results["success_count"]} out of {results["total"]} recipients',
+        'results': results
+    }, status=status.HTTP_200_OK if results['success_count'] > 0 else status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 # ============================================================================
 # Dynamic Form Views for Document Management
 # ============================================================================
@@ -209,13 +324,31 @@ def document_list(request, doctype_slug):
 @login_required
 def document_create(request, doctype_slug):
     """Create a new document with dynamic form"""
+    from .models import DocumentLink
+
     doctype = get_object_or_404(Doctype, slug=doctype_slug, is_active=True)
     fields = doctype.schema.get('fields', [])
+
+    # Get available documents for link fields
+    link_field_options = {}
+    for field in fields:
+        if field['type'] == 'link':
+            link_doctype_name = field.get('link_doctype')
+            if link_doctype_name:
+                try:
+                    link_doctype = Doctype.objects.get(name=link_doctype_name, is_active=True)
+                    link_field_options[field['name']] = Document.objects.filter(
+                        doctype=link_doctype,
+                        is_deleted=False
+                    ).order_by('name')
+                except Doctype.DoesNotExist:
+                    link_field_options[field['name']] = []
 
     if request.method == 'POST':
         # Collect and validate form data
         data = {}
         errors = {}
+        link_fields_data = {}  # Store link field values separately
 
         for field in fields:
             field_name = field['name']
@@ -233,7 +366,16 @@ def document_create(request, doctype_slug):
 
             # Type conversion and validation
             try:
-                if field_type == 'integer':
+                if field_type == 'link':
+                    # Store link field for later processing
+                    link_fields_data[field_name] = field_value
+                    # Get linked document name for JSON storage
+                    try:
+                        linked_doc = Document.objects.get(id=int(field_value))
+                        data[field_name] = linked_doc.name
+                    except (Document.DoesNotExist, ValueError):
+                        errors[field_name] = f"Invalid {field.get('label', field_name)} selection"
+                elif field_type == 'integer':
                     data[field_name] = int(field_value) if field_value else None
                 elif field_type == 'decimal':
                     data[field_name] = str(Decimal(field_value)) if field_value else None
@@ -258,6 +400,19 @@ def document_create(request, doctype_slug):
                 created_by=request.user
             )
 
+            # Create DocumentLink entries for link fields
+            for field_name, doc_id in link_fields_data.items():
+                try:
+                    target_doc = Document.objects.get(id=int(doc_id))
+                    DocumentLink.objects.create(
+                        source_document=document,
+                        target_document=target_doc,
+                        field_name=field_name,
+                        created_by=request.user
+                    )
+                except (Document.DoesNotExist, ValueError):
+                    pass  # Already validated above
+
             messages.success(request, f'{doctype.name} "{document.name}" created successfully!')
             return redirect('document_list', doctype_slug=doctype_slug)
         else:
@@ -269,6 +424,7 @@ def document_create(request, doctype_slug):
         'fields': fields,
         'action': 'Create',
         'submit_url': request.path,
+        'link_field_options': link_field_options,
     }
 
     return render(request, 'doctypes/document_form.html', context)
@@ -277,14 +433,32 @@ def document_create(request, doctype_slug):
 @login_required
 def document_edit(request, doctype_slug, document_id):
     """Edit an existing document with dynamic form"""
+    from .models import DocumentLink
+
     doctype = get_object_or_404(Doctype, slug=doctype_slug, is_active=True)
     document = get_object_or_404(Document, id=document_id, doctype=doctype)
     fields = doctype.schema.get('fields', [])
+
+    # Get available documents for link fields
+    link_field_options = {}
+    for field in fields:
+        if field['type'] == 'link':
+            link_doctype_name = field.get('link_doctype')
+            if link_doctype_name:
+                try:
+                    link_doctype = Doctype.objects.get(name=link_doctype_name, is_active=True)
+                    link_field_options[field['name']] = Document.objects.filter(
+                        doctype=link_doctype,
+                        is_deleted=False
+                    ).order_by('name')
+                except Doctype.DoesNotExist:
+                    link_field_options[field['name']] = []
 
     if request.method == 'POST':
         # Collect and validate form data
         data = {}
         errors = {}
+        link_fields_data = {}  # Store link field values separately
 
         for field in fields:
             field_name = field['name']
@@ -302,7 +476,16 @@ def document_edit(request, doctype_slug, document_id):
 
             # Type conversion and validation
             try:
-                if field_type == 'integer':
+                if field_type == 'link':
+                    # Store link field for later processing
+                    link_fields_data[field_name] = field_value
+                    # Get linked document name for JSON storage
+                    try:
+                        linked_doc = Document.objects.get(id=int(field_value))
+                        data[field_name] = linked_doc.name
+                    except (Document.DoesNotExist, ValueError):
+                        errors[field_name] = f"Invalid {field.get('label', field_name)} selection"
+                elif field_type == 'integer':
                     data[field_name] = int(field_value) if field_value else None
                 elif field_type == 'decimal':
                     data[field_name] = str(Decimal(field_value)) if field_value else None
@@ -318,7 +501,26 @@ def document_edit(request, doctype_slug, document_id):
         if not errors:
             # Update document
             document.data = data
+            document.modified_by = request.user  # Track who modified the document
             document.save()
+
+            # Update DocumentLink entries for link fields
+            # First, remove old links
+            for field_name in link_fields_data.keys():
+                document.outgoing_links.filter(field_name=field_name).delete()
+
+            # Then create new links
+            for field_name, doc_id in link_fields_data.items():
+                try:
+                    target_doc = Document.objects.get(id=int(doc_id))
+                    DocumentLink.objects.create(
+                        source_document=document,
+                        target_document=target_doc,
+                        field_name=field_name,
+                        created_by=request.user
+                    )
+                except (Document.DoesNotExist, ValueError):
+                    pass  # Already validated above
 
             messages.success(request, f'{doctype.name} "{document.name}" updated successfully!')
             return redirect('document_list', doctype_slug=doctype_slug)
@@ -332,6 +534,7 @@ def document_edit(request, doctype_slug, document_id):
         'fields': fields,
         'action': 'Edit',
         'submit_url': request.path,
+        'link_field_options': link_field_options,
     }
 
     return render(request, 'doctypes/document_form.html', context)
