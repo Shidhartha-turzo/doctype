@@ -80,6 +80,8 @@ def request_magic_link(request):
 @permission_classes([AllowAny])
 def login(request):
     """Login with username and password - Protected against brute force attacks"""
+    from core.security_models import UserLoginHistory
+
     ip_address = get_client_ip(request)
     user_agent = get_user_agent(request)
     username = request.data.get('username', '')
@@ -106,12 +108,20 @@ def login(request):
     if serializer.is_valid():
         user = serializer.validated_data['user']
 
-        # Record successful login
+        # Record successful login (existing system)
         record_login_attempt(
             username=username,
             ip_address=ip_address,
             success=True,
             user_agent=user_agent
+        )
+
+        # Log to UserLoginHistory (new detailed tracking)
+        UserLoginHistory.log_login(
+            user=user,
+            request=request,
+            success=True,
+            login_type='password'
         )
 
         # Create tokens and session
@@ -127,6 +137,19 @@ def login(request):
         user_agent=user_agent,
         failure_reason='Invalid credentials'
     )
+
+    # Log failed login to UserLoginHistory
+    try:
+        user = User.objects.get(username=username)
+        UserLoginHistory.log_login(
+            user=user,
+            request=request,
+            success=False,
+            failure_reason='Invalid credentials',
+            login_type='password'
+        )
+    except User.DoesNotExist:
+        pass  # User doesn't exist, skip detailed logging
 
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -172,7 +195,7 @@ def list_sessions(request):
 @permission_classes([IsAuthenticated])
 def logout(request):
     """Logout and deactivate session"""
-    from core.security_models import SecurityAuditLog
+    from core.security_models import SecurityAuditLog, UserLoginHistory
 
     session_key = request.data.get('session_key') or request.META.get('HTTP_X_SESSION_KEY')
 
@@ -192,5 +215,8 @@ def logout(request):
             )
         except UserSession.DoesNotExist:
             pass
+
+    # Log logout to UserLoginHistory
+    UserLoginHistory.log_logout(user=request.user, request=request)
 
     return Response(status=status.HTTP_204_NO_CONTENT)

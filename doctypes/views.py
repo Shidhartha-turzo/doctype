@@ -3,10 +3,16 @@ from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Q
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, render, redirect
+from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.views.decorators.http import require_http_methods
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from .models import Doctype, Document
 from .serializers import DoctypeSerializer, DoctypeListSerializer, DynamicDocumentSerializer
+import json
+from decimal import Decimal
+from datetime import datetime
 
 
 class DoctypeViewSet(viewsets.ModelViewSet):
@@ -175,3 +181,171 @@ def openapi_schema(request):
     schema = generator.get_schema()
 
     return Response(schema)
+
+
+# ============================================================================
+# Dynamic Form Views for Document Management
+# ============================================================================
+
+@login_required
+def document_list(request, doctype_slug):
+    """List all documents for a doctype with dynamic table"""
+    doctype = get_object_or_404(Doctype, slug=doctype_slug, is_active=True)
+    documents = Document.objects.filter(doctype=doctype).order_by('-created_at')
+
+    # Get schema fields
+    fields = doctype.schema.get('fields', [])
+
+    context = {
+        'doctype': doctype,
+        'documents': documents,
+        'fields': fields,
+        'field_names': [f['name'] for f in fields],
+    }
+
+    return render(request, 'doctypes/document_list.html', context)
+
+
+@login_required
+def document_create(request, doctype_slug):
+    """Create a new document with dynamic form"""
+    doctype = get_object_or_404(Doctype, slug=doctype_slug, is_active=True)
+    fields = doctype.schema.get('fields', [])
+
+    if request.method == 'POST':
+        # Collect and validate form data
+        data = {}
+        errors = {}
+
+        for field in fields:
+            field_name = field['name']
+            field_type = field['type']
+            field_value = request.POST.get(field_name, '').strip()
+
+            # Check required fields
+            if field.get('required') and not field_value:
+                errors[field_name] = f"{field.get('label', field_name)} is required"
+                continue
+
+            # Skip empty optional fields
+            if not field_value:
+                continue
+
+            # Type conversion and validation
+            try:
+                if field_type == 'integer':
+                    data[field_name] = int(field_value) if field_value else None
+                elif field_type == 'decimal':
+                    data[field_name] = str(Decimal(field_value)) if field_value else None
+                elif field_type == 'boolean':
+                    data[field_name] = field_value.lower() in ['true', '1', 'yes', 'on']
+                elif field_type == 'json':
+                    data[field_name] = json.loads(field_value) if field_value else None
+                else:
+                    data[field_name] = field_value
+            except (ValueError, json.JSONDecodeError) as e:
+                errors[field_name] = f"Invalid {field_type} value"
+
+        if not errors:
+            # Generate document name
+            name = data.get('name') or data.get(fields[0]['name']) if fields else 'NEW'
+
+            # Create document
+            document = Document.objects.create(
+                doctype=doctype,
+                name=str(name),
+                data=data,
+                created_by=request.user
+            )
+
+            messages.success(request, f'{doctype.name} "{document.name}" created successfully!')
+            return redirect('document_list', doctype_slug=doctype_slug)
+        else:
+            for field_name, error in errors.items():
+                messages.error(request, error)
+
+    context = {
+        'doctype': doctype,
+        'fields': fields,
+        'action': 'Create',
+        'submit_url': request.path,
+    }
+
+    return render(request, 'doctypes/document_form.html', context)
+
+
+@login_required
+def document_edit(request, doctype_slug, document_id):
+    """Edit an existing document with dynamic form"""
+    doctype = get_object_or_404(Doctype, slug=doctype_slug, is_active=True)
+    document = get_object_or_404(Document, id=document_id, doctype=doctype)
+    fields = doctype.schema.get('fields', [])
+
+    if request.method == 'POST':
+        # Collect and validate form data
+        data = {}
+        errors = {}
+
+        for field in fields:
+            field_name = field['name']
+            field_type = field['type']
+            field_value = request.POST.get(field_name, '').strip()
+
+            # Check required fields
+            if field.get('required') and not field_value:
+                errors[field_name] = f"{field.get('label', field_name)} is required"
+                continue
+
+            # Skip empty optional fields
+            if not field_value:
+                continue
+
+            # Type conversion and validation
+            try:
+                if field_type == 'integer':
+                    data[field_name] = int(field_value) if field_value else None
+                elif field_type == 'decimal':
+                    data[field_name] = str(Decimal(field_value)) if field_value else None
+                elif field_type == 'boolean':
+                    data[field_name] = field_value.lower() in ['true', '1', 'yes', 'on']
+                elif field_type == 'json':
+                    data[field_name] = json.loads(field_value) if field_value else None
+                else:
+                    data[field_name] = field_value
+            except (ValueError, json.JSONDecodeError) as e:
+                errors[field_name] = f"Invalid {field_type} value"
+
+        if not errors:
+            # Update document
+            document.data = data
+            document.save()
+
+            messages.success(request, f'{doctype.name} "{document.name}" updated successfully!')
+            return redirect('document_list', doctype_slug=doctype_slug)
+        else:
+            for field_name, error in errors.items():
+                messages.error(request, error)
+
+    context = {
+        'doctype': doctype,
+        'document': document,
+        'fields': fields,
+        'action': 'Edit',
+        'submit_url': request.path,
+    }
+
+    return render(request, 'doctypes/document_form.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def document_delete(request, doctype_slug, document_id):
+    """Delete a document"""
+    doctype = get_object_or_404(Doctype, slug=doctype_slug, is_active=True)
+    document = get_object_or_404(Document, id=document_id, doctype=doctype)
+
+    document_name = document.name
+    document.delete()
+
+    messages.success(request, f'{doctype.name} "{document_name}" deleted successfully!')
+    return redirect('document_list', doctype_slug=doctype_slug)

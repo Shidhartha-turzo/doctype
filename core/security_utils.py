@@ -475,3 +475,66 @@ def cleanup_expired_data():
     results['audit_logs_removed'] = SecurityAuditLog.cleanup_old_logs()
 
     return results
+
+
+def parse_user_agent(user_agent_string):
+    """
+    Parse user agent string to extract device information.
+
+    Args:
+        user_agent_string: Raw user agent string
+
+    Returns:
+        dict: Dictionary with device_type, browser, os information
+    """
+    if not user_agent_string:
+        return {
+            'device_type': 'unknown',
+            'browser': 'unknown',
+            'os': 'unknown'
+        }
+
+    user_agent_lower = user_agent_string.lower()
+
+    # Detect device type
+    device_type = 'desktop'
+    if 'mobile' in user_agent_lower or 'android' in user_agent_lower:
+        device_type = 'mobile'
+    elif 'tablet' in user_agent_lower or 'ipad' in user_agent_lower:
+        device_type = 'tablet'
+    elif 'bot' in user_agent_lower or 'crawler' in user_agent_lower or 'spider' in user_agent_lower:
+        device_type = 'bot'
+
+    # Detect browser
+    browser = 'unknown'
+    if 'chrome' in user_agent_lower and 'edg' not in user_agent_lower:
+        browser = 'Chrome'
+    elif 'firefox' in user_agent_lower:
+        browser = 'Firefox'
+    elif 'safari' in user_agent_lower and 'chrome' not in user_agent_lower:
+        browser = 'Safari'
+    elif 'edg' in user_agent_lower:
+        browser = 'Edge'
+    elif 'opera' in user_agent_lower or 'opr' in user_agent_lower:
+        browser = 'Opera'
+    elif 'msie' in user_agent_lower or 'trident' in user_agent_lower:
+        browser = 'Internet Explorer'
+
+    # Detect OS
+    os_name = 'unknown'
+    if 'windows' in user_agent_lower:
+        os_name = 'Windows'
+    elif 'mac os' in user_agent_lower or 'macos' in user_agent_lower:
+        os_name = 'macOS'
+    elif 'linux' in user_agent_lower:
+        os_name = 'Linux'
+    elif 'android' in user_agent_lower:
+        os_name = 'Android'
+    elif 'ios' in user_agent_lower or 'iphone' in user_agent_lower or 'ipad' in user_agent_lower:
+        os_name = 'iOS'
+
+    return {
+        'device_type': device_type,
+        'browser': browser,
+        'os': os_name
+    }

@@ -1,4 +1,10 @@
 from django.contrib import admin
+from django.urls import path, re_path, reverse
+from django.shortcuts import get_object_or_404, redirect
+from django.utils.html import format_html
+from django.template.response import TemplateResponse
+from django import forms
+import json
 from .models import Doctype, Document, Module
 from .engine_models import (
     DoctypePermission, DocumentVersion, Workflow, WorkflowState, WorkflowTransition,
@@ -15,13 +21,133 @@ class ModuleAdmin(admin.ModelAdmin):
     list_editable = ['order', 'is_active']
 
 
+class DoctypeAdminForm(forms.ModelForm):
+    """Custom form for Doctype with visual field builder"""
+
+    class Meta:
+        model = Doctype
+        fields = '__all__'
+        widgets = {
+            'schema': forms.HiddenInput(),  # Hide the raw JSON field
+        }
+
+
 @admin.register(Doctype)
 class DoctypeAdmin(admin.ModelAdmin):
-    list_display = ['name', 'slug', 'module', 'status', 'is_submittable', 'track_changes', 'version', 'is_active']
+    form = DoctypeAdminForm
+    list_display = ['name', 'slug', 'module', 'status', 'is_submittable', 'track_changes', 'version', 'is_active', 'view_link']
     list_filter = ['status', 'module', 'is_active', 'is_submittable', 'is_single', 'is_child', 'track_changes']
     search_fields = ['name', 'slug', 'description']
     readonly_fields = ['slug', 'created_at', 'updated_at']
     list_editable = ['status', 'is_active']
+
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'slug', 'description', 'module', 'icon', 'color')
+        }),
+        ('Type & Features', {
+            'fields': ('is_submittable', 'is_single', 'is_child', 'is_tree', 'track_changes', 'track_views')
+        }),
+        ('Naming', {
+            'fields': ('naming_rule', 'autoname', 'title_field')
+        }),
+        ('Permissions & Security', {
+            'fields': ('has_permissions', 'status')
+        }),
+        ('Schema (JSON)', {
+            'fields': ('schema',),
+            'classes': ('collapse',),
+            'description': 'Raw JSON schema - use the visual field builder below instead'
+        }),
+        ('Metadata', {
+            'fields': ('created_by', 'created_at', 'updated_at', 'version', 'is_active', 'is_custom'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    class Media:
+        css = {
+            'all': ('admin/css/doctype_builder.css',)
+        }
+        js = ('admin/js/doctype_builder.js',)
+
+    def view_link(self, obj):
+        """Add a link to view the doctype by slug"""
+        if obj.slug:
+            url = reverse('admin:doctypes_doctype_change_by_slug', args=[obj.slug])
+            return format_html('<a href="{}" target="_blank">View by Slug</a>', url)
+        return '-'
+    view_link.short_description = 'Actions'
+
+    def get_urls(self):
+        """Add custom URL patterns for slug-based access"""
+        urls = super().get_urls()
+        custom_urls = [
+            # Use regex to match slugs that are NOT pure numbers
+            # This prevents interference with ID-based URLs
+            re_path(
+                r'^(?P<slug>[a-z][a-z0-9_-]*)/change/$',
+                self.admin_site.admin_view(self.change_view_by_slug),
+                name='doctypes_doctype_change_by_slug',
+            ),
+            re_path(
+                r'^(?P<slug>[a-z][a-z0-9_-]*)/delete/$',
+                self.admin_site.admin_view(self.delete_view_by_slug),
+                name='doctypes_doctype_delete_by_slug',
+            ),
+        ]
+        return custom_urls + urls
+
+    def change_view_by_slug(self, request, slug, form_url='', extra_context=None):
+        """Handle change view with slug instead of ID"""
+        doctype = get_object_or_404(Doctype, slug=slug)
+        return self.change_view(request, str(doctype.pk), form_url, extra_context)
+
+    def delete_view_by_slug(self, request, slug, extra_context=None):
+        """Handle delete view with slug instead of ID"""
+        doctype = get_object_or_404(Doctype, slug=slug)
+        return self.delete_view(request, str(doctype.pk), extra_context)
+
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        """Override change view to add field builder context"""
+        extra_context = extra_context or {}
+
+        if object_id:
+            obj = self.get_object(request, object_id)
+            if obj:
+                # Parse schema fields for visual display
+                schema = obj.schema or {}
+                fields = schema.get('fields', [])
+                field_types = [
+                    'string', 'text', 'integer', 'decimal', 'boolean', 'date', 'datetime',
+                    'json', 'link', 'select', 'multiselect', 'table', 'file', 'image',
+                    'email', 'phone', 'url', 'color', 'rating', 'currency', 'percent',
+                    'duration', 'computed'
+                ]
+
+                # Pass both JSON and list versions
+                extra_context['doctype_fields_json'] = json.dumps(fields)
+                extra_context['field_types_json'] = json.dumps(field_types)
+                extra_context['field_types'] = field_types  # For template loop
+
+        return super().change_view(request, object_id, form_url, extra_context)
+
+    def add_view(self, request, form_url='', extra_context=None):
+        """Override add view to add field builder context"""
+        extra_context = extra_context or {}
+        field_types = [
+            'string', 'text', 'integer', 'decimal', 'boolean', 'date', 'datetime',
+            'json', 'link', 'select', 'multiselect', 'table', 'file', 'image',
+            'email', 'phone', 'url', 'color', 'rating', 'currency', 'percent',
+            'duration', 'computed'
+        ]
+
+        # Pass both JSON and list versions
+        extra_context['doctype_fields_json'] = json.dumps([])
+        extra_context['field_types_json'] = json.dumps(field_types)
+        extra_context['field_types'] = field_types  # For template loop
+
+        return super().add_view(request, form_url, extra_context)
 
 
 @admin.register(Document)

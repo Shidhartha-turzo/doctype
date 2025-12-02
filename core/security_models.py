@@ -646,3 +646,541 @@ class APIKey(models.Model):
         self.usage_count += 1
         self.last_used_at = timezone.now()
         self.save(update_fields=['usage_count', 'last_used_at'])
+
+
+class UserLoginHistory(models.Model):
+    """
+    Tracks all user login attempts and successful logins with IP addresses.
+    Essential for security auditing and compliance in production.
+    """
+    # User information
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='login_history',
+        help_text="User who logged in"
+    )
+    username = models.CharField(
+        max_length=150,
+        db_index=True,
+        help_text="Username (denormalized for faster queries)"
+    )
+
+    # Login details
+    login_type = models.CharField(
+        max_length=20,
+        choices=[
+            ('password', 'Password'),
+            ('magic_link', 'Magic Link'),
+            ('api_key', 'API Key'),
+            ('jwt_refresh', 'JWT Refresh'),
+            ('social', 'Social Login'),
+            ('sso', 'Single Sign-On'),
+        ],
+        default='password',
+        help_text="Method used to authenticate"
+    )
+
+    success = models.BooleanField(
+        default=True,
+        db_index=True,
+        help_text="Whether login was successful"
+    )
+
+    failure_reason = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Reason for failed login (if applicable)"
+    )
+
+    # Network information
+    ip_address = models.GenericIPAddressField(
+        db_index=True,
+        help_text="IP address of the login attempt"
+    )
+
+    user_agent = models.TextField(
+        blank=True,
+        help_text="Browser user agent string"
+    )
+
+    device_type = models.CharField(
+        max_length=20,
+        choices=[
+            ('desktop', 'Desktop'),
+            ('mobile', 'Mobile'),
+            ('tablet', 'Tablet'),
+            ('bot', 'Bot'),
+            ('unknown', 'Unknown'),
+        ],
+        default='unknown',
+        help_text="Type of device used"
+    )
+
+    # Geographic information (optional)
+    country = models.CharField(
+        max_length=2,
+        null=True,
+        blank=True,
+        help_text="Country code (ISO 3166-1 alpha-2)"
+    )
+
+    city = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="City name"
+    )
+
+    # Session information
+    session_key = models.CharField(
+        max_length=40,
+        null=True,
+        blank=True,
+        help_text="Django session key"
+    )
+
+    # Timing
+    login_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+        help_text="Timestamp of login attempt"
+    )
+
+    logout_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp of logout (if applicable)"
+    )
+
+    session_duration = models.DurationField(
+        null=True,
+        blank=True,
+        help_text="Duration of the session"
+    )
+
+    # Additional metadata
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Additional metadata (referrer, etc.)"
+    )
+
+    class Meta:
+        ordering = ['-login_at']
+        indexes = [
+            models.Index(fields=['user', '-login_at']),
+            models.Index(fields=['ip_address', '-login_at']),
+            models.Index(fields=['username', '-login_at']),
+            models.Index(fields=['success', '-login_at']),
+        ]
+        verbose_name = 'User Login History'
+        verbose_name_plural = 'User Login Histories'
+
+    def __str__(self):
+        status = "Success" if self.success else "Failed"
+        return f"{self.username} - {status} - {self.ip_address} - {self.login_at}"
+
+    def calculate_session_duration(self):
+        """Calculate and update session duration"""
+        if self.logout_at:
+            self.session_duration = self.logout_at - self.login_at
+            self.save(update_fields=['session_duration'])
+
+    @classmethod
+    def log_login(cls, user, request, success=True, failure_reason=None, login_type='password'):
+        """
+        Log a user login attempt.
+
+        Args:
+            user: User object
+            request: Django request object
+            success: Whether login was successful
+            failure_reason: Reason for failure (if applicable)
+            login_type: Type of login (password, magic_link, etc.)
+
+        Returns:
+            UserLoginHistory object
+        """
+        from core.security_utils import get_client_ip, parse_user_agent
+
+        ip_address = get_client_ip(request)
+        user_agent = request.META.get('HTTP_USER_AGENT', '')
+        device_info = parse_user_agent(user_agent)
+
+        login_history = cls.objects.create(
+            user=user,
+            username=user.username,
+            login_type=login_type,
+            success=success,
+            failure_reason=failure_reason,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            device_type=device_info.get('device_type', 'unknown'),
+            session_key=request.session.session_key if hasattr(request, 'session') else None,
+            metadata={
+                'referrer': request.META.get('HTTP_REFERER', ''),
+                'accept_language': request.META.get('HTTP_ACCEPT_LANGUAGE', ''),
+                'browser': device_info.get('browser', ''),
+                'os': device_info.get('os', ''),
+            }
+        )
+
+        # Also log to SecurityAuditLog for critical events
+        if success:
+            SecurityAuditLog.log_event(
+                event_type='login_success',
+                description=f'User {user.username} logged in successfully via {login_type}',
+                user=user,
+                ip_address=ip_address,
+                severity='low',
+                metadata={'login_type': login_type}
+            )
+        else:
+            SecurityAuditLog.log_event(
+                event_type='login_failed',
+                description=f'Failed login for {user.username}: {failure_reason}',
+                user=user,
+                ip_address=ip_address,
+                severity='medium',
+                metadata={'login_type': login_type, 'reason': failure_reason}
+            )
+
+        return login_history
+
+    @classmethod
+    def log_logout(cls, user, request):
+        """
+        Log a user logout.
+
+        Args:
+            user: User object
+            request: Django request object
+        """
+        from core.security_utils import get_client_ip
+
+        # Find the most recent active session for this user
+        session_key = request.session.session_key if hasattr(request, 'session') else None
+        if session_key:
+            login_history = cls.objects.filter(
+                user=user,
+                session_key=session_key,
+                logout_at__isnull=True
+            ).first()
+
+            if login_history:
+                login_history.logout_at = timezone.now()
+                login_history.calculate_session_duration()
+
+        # Log to security audit
+        SecurityAuditLog.log_event(
+            event_type='logout',
+            description=f'User {user.username} logged out',
+            user=user,
+            ip_address=get_client_ip(request),
+            severity='low'
+        )
+
+    @classmethod
+    def get_user_last_login(cls, user):
+        """Get user's last successful login information"""
+        return cls.objects.filter(
+            user=user,
+            success=True
+        ).first()
+
+    @classmethod
+    def get_failed_logins(cls, username=None, ip_address=None, hours=24):
+        """Get failed login attempts within specified hours"""
+        queryset = cls.objects.filter(
+            success=False,
+            login_at__gte=timezone.now() - timedelta(hours=hours)
+        )
+
+        if username:
+            queryset = queryset.filter(username=username)
+        if ip_address:
+            queryset = queryset.filter(ip_address=ip_address)
+
+        return queryset
+
+
+class ChangeLog(models.Model):
+    """
+    Tracks major changes to the system for production change management.
+    Essential for compliance, debugging, and rollback capabilities.
+    """
+    # Change information
+    change_type = models.CharField(
+        max_length=30,
+        choices=[
+            ('deployment', 'Deployment'),
+            ('configuration', 'Configuration Change'),
+            ('schema_change', 'Schema Change'),
+            ('security_update', 'Security Update'),
+            ('feature_added', 'Feature Added'),
+            ('feature_removed', 'Feature Removed'),
+            ('bug_fix', 'Bug Fix'),
+            ('performance', 'Performance Optimization'),
+            ('migration', 'Data Migration'),
+            ('hotfix', 'Hotfix'),
+            ('rollback', 'Rollback'),
+            ('maintenance', 'Maintenance'),
+            ('other', 'Other'),
+        ],
+        db_index=True,
+        help_text="Type of change"
+    )
+
+    title = models.CharField(
+        max_length=255,
+        help_text="Brief title of the change"
+    )
+
+    description = models.TextField(
+        help_text="Detailed description of the change"
+    )
+
+    # Version information
+    version = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        help_text="Version number (e.g., v1.2.3)"
+    )
+
+    # Impact assessment
+    impact_level = models.CharField(
+        max_length=20,
+        choices=[
+            ('critical', 'Critical'),
+            ('high', 'High'),
+            ('medium', 'Medium'),
+            ('low', 'Low'),
+        ],
+        default='medium',
+        db_index=True,
+        help_text="Impact level of the change"
+    )
+
+    affected_systems = models.JSONField(
+        default=list,
+        help_text="List of affected systems/modules"
+    )
+
+    # Change management
+    change_request_id = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="Reference to change request/ticket ID"
+    )
+
+    approval_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('approved', 'Approved'),
+            ('rejected', 'Rejected'),
+            ('emergency', 'Emergency (No Approval)'),
+        ],
+        default='approved',
+        help_text="Approval status"
+    )
+
+    approved_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='approved_changes',
+        help_text="User who approved the change"
+    )
+
+    # Execution information
+    performed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='performed_changes',
+        help_text="User who performed the change"
+    )
+
+    deployed_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+        help_text="When the change was deployed"
+    )
+
+    # Rollback information
+    can_rollback = models.BooleanField(
+        default=False,
+        help_text="Whether this change can be rolled back"
+    )
+
+    rollback_instructions = models.TextField(
+        blank=True,
+        help_text="Instructions for rolling back this change"
+    )
+
+    rolled_back = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Whether this change has been rolled back"
+    )
+
+    rolled_back_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the rollback was performed"
+    )
+
+    rolled_back_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='rollbacks_performed',
+        help_text="User who performed the rollback"
+    )
+
+    # Testing and validation
+    testing_notes = models.TextField(
+        blank=True,
+        help_text="Testing performed before deployment"
+    )
+
+    validation_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('passed', 'Passed'),
+            ('failed', 'Failed'),
+            ('skipped', 'Skipped'),
+        ],
+        default='passed',
+        help_text="Validation status"
+    )
+
+    # Documentation
+    documentation_url = models.URLField(
+        null=True,
+        blank=True,
+        help_text="Link to detailed documentation"
+    )
+
+    jira_ticket = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="Jira/ticket reference"
+    )
+
+    git_commit = models.CharField(
+        max_length=40,
+        null=True,
+        blank=True,
+        help_text="Git commit hash"
+    )
+
+    git_branch = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="Git branch name"
+    )
+
+    # Additional metadata
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Additional metadata about the change"
+    )
+
+    # Timing
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-deployed_at']
+        indexes = [
+            models.Index(fields=['change_type', '-deployed_at']),
+            models.Index(fields=['impact_level', '-deployed_at']),
+            models.Index(fields=['rolled_back', '-deployed_at']),
+        ]
+        verbose_name = 'Change Log'
+        verbose_name_plural = 'Change Logs'
+
+    def __str__(self):
+        return f"{self.get_change_type_display()} - {self.title} ({self.deployed_at.strftime('%Y-%m-%d')})"
+
+    @classmethod
+    def log_change(cls, change_type, title, description, performed_by, **kwargs):
+        """
+        Log a major system change.
+
+        Args:
+            change_type: Type of change
+            title: Brief title
+            description: Detailed description
+            performed_by: User who performed the change
+            **kwargs: Additional fields
+
+        Returns:
+            ChangeLog object
+        """
+        change_log = cls.objects.create(
+            change_type=change_type,
+            title=title,
+            description=description,
+            performed_by=performed_by,
+            **kwargs
+        )
+
+        # Also log to SecurityAuditLog for critical changes
+        if kwargs.get('impact_level') in ['critical', 'high']:
+            SecurityAuditLog.log_event(
+                event_type='system_change',
+                description=f'{change_type}: {title}',
+                user=performed_by,
+                severity='high' if kwargs.get('impact_level') == 'critical' else 'medium',
+                metadata={
+                    'change_type': change_type,
+                    'impact_level': kwargs.get('impact_level'),
+                    'version': kwargs.get('version'),
+                }
+            )
+
+        return change_log
+
+    @classmethod
+    def get_recent_changes(cls, days=30):
+        """Get recent changes within specified days"""
+        return cls.objects.filter(
+            deployed_at__gte=timezone.now() - timedelta(days=days)
+        )
+
+    @classmethod
+    def get_critical_changes(cls):
+        """Get all critical changes"""
+        return cls.objects.filter(impact_level='critical')
+
+    def mark_rollback(self, user, notes=''):
+        """Mark this change as rolled back"""
+        self.rolled_back = True
+        self.rolled_back_at = timezone.now()
+        self.rolled_back_by = user
+        self.save(update_fields=['rolled_back', 'rolled_back_at', 'rolled_back_by'])
+
+        # Create a rollback change log
+        ChangeLog.log_change(
+            change_type='rollback',
+            title=f'Rollback: {self.title}',
+            description=f'Rolled back change from {self.deployed_at}. {notes}',
+            performed_by=user,
+            impact_level=self.impact_level,
+            affected_systems=self.affected_systems,
+            metadata={'original_change_id': self.id}
+        )

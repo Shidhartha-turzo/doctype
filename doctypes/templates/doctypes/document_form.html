@@ -1,0 +1,367 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{% load doctype_filters %}
+
+{% block title %}{{ action }} {{ doctype.name }}{% endblock %}
+
+{% block extrastyle %}
+<style>
+    .form-container {
+        padding: 20px;
+        max-width: 900px;
+        margin: 0 auto;
+    }
+
+    .form-header {
+        margin-bottom: 30px;
+        padding-bottom: 20px;
+        border-bottom: 2px solid #dee2e6;
+    }
+
+    .form-header h1 {
+        margin: 0 0 10px 0;
+        color: #333;
+        font-size: 28px;
+    }
+
+    .form-header .breadcrumb {
+        font-size: 14px;
+        color: #666;
+    }
+
+    .form-header .breadcrumb a {
+        color: #007bff;
+        text-decoration: none;
+    }
+
+    .form-header .breadcrumb a:hover {
+        text-decoration: underline;
+    }
+
+    .form-card {
+        background: white;
+        border-radius: 8px;
+        padding: 30px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 500;
+        color: #333;
+        font-size: 14px;
+    }
+
+    .form-group label .required {
+        color: #dc3545;
+        margin-left: 3px;
+    }
+
+    .form-group .help-text {
+        font-size: 12px;
+        color: #666;
+        margin-top: 5px;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #ced4da;
+        border-radius: 5px;
+        font-size: 14px;
+        transition: all 0.3s;
+        box-sizing: border-box;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #007bff;
+        box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+    }
+
+    .form-control:disabled {
+        background: #e9ecef;
+        cursor: not-allowed;
+    }
+
+    textarea.form-control {
+        min-height: 100px;
+        resize: vertical;
+    }
+
+    select.form-control {
+        cursor: pointer;
+    }
+
+    input[type="checkbox"] {
+        width: auto;
+        margin-right: 8px;
+    }
+
+    .checkbox-label {
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+        padding: 8px 0;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 30px;
+        padding-top: 20px;
+        border-top: 1px solid #dee2e6;
+    }
+
+    .btn {
+        padding: 10px 24px;
+        border-radius: 5px;
+        text-decoration: none;
+        font-weight: 500;
+        transition: all 0.3s;
+        border: none;
+        cursor: pointer;
+        font-size: 14px;
+    }
+
+    .btn-primary {
+        background: #007bff;
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background: #0056b3;
+    }
+
+    .btn-secondary {
+        background: #6c757d;
+        color: white;
+    }
+
+    .btn-secondary:hover {
+        background: #5a6268;
+    }
+
+    .messages {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 20px 0;
+    }
+
+    .message {
+        padding: 12px 20px;
+        border-radius: 5px;
+        margin-bottom: 10px;
+    }
+
+    .message.success {
+        background: #d4edda;
+        color: #155724;
+        border-left: 4px solid #28a745;
+    }
+
+    .message.error {
+        background: #f8d7da;
+        color: #721c24;
+        border-left: 4px solid #dc3545;
+    }
+
+    .field-type-badge {
+        display: inline-block;
+        padding: 2px 6px;
+        background: #e9ecef;
+        border-radius: 3px;
+        font-size: 11px;
+        margin-left: 8px;
+        color: #666;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <div class="form-header">
+        <h1>{{ action }} {{ doctype.name }}</h1>
+        <div class="breadcrumb">
+            <a href="{% url 'document_list' doctype.slug %}">← Back to {{ doctype.name }} List</a>
+        </div>
+    </div>
+
+    {% if messages %}
+    <ul class="messages">
+        {% for message in messages %}
+        <li class="message {{ message.tags }}">{{ message }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    <div class="form-card">
+        <form method="post" action="{{ submit_url }}">
+            {% csrf_token %}
+
+            {% for field in fields %}
+            <div class="form-group">
+                <label for="id_{{ field.name }}">
+                    {{ field.label|default:field.name }}
+                    {% if field.required %}<span class="required">*</span>{% endif %}
+                    <span class="field-type-badge">{{ field.type }}</span>
+                </label>
+
+                {% if field.type == 'text' or field.type == 'json' %}
+                    <textarea
+                        name="{{ field.name }}"
+                        id="id_{{ field.name }}"
+                        class="form-control"
+                        {% if field.required %}required{% endif %}
+                        {% if field.readonly %}disabled{% endif %}
+                        placeholder="{{ field.description|default:'' }}"
+                    >{% if document %}{{ document.data|get_item:field.name|default:'' }}{% endif %}</textarea>
+
+                {% elif field.type == 'boolean' %}
+                    <label class="checkbox-label">
+                        <input
+                            type="checkbox"
+                            name="{{ field.name }}"
+                            id="id_{{ field.name }}"
+                            value="true"
+                            {% if document and document.data|get_item:field.name %}checked{% endif %}
+                            {% if field.readonly %}disabled{% endif %}
+                        >
+                        {{ field.description|default:'Enable this option' }}
+                    </label>
+
+                {% elif field.type == 'select' or field.type == 'multiselect' %}
+                    <select
+                        name="{{ field.name }}"
+                        id="id_{{ field.name }}"
+                        class="form-control"
+                        {% if field.required %}required{% endif %}
+                        {% if field.readonly %}disabled{% endif %}
+                        {% if field.type == 'multiselect' %}multiple{% endif %}
+                    >
+                        <option value="">-- Select --</option>
+                        {% for option in field.options %}
+                        <option value="{{ option }}"
+                            {% if document and document.data|get_item:field.name == option %}selected{% endif %}>
+                            {{ option }}
+                        </option>
+                        {% endfor %}
+                    </select>
+
+                {% elif field.type == 'integer' or field.type == 'decimal' or field.type == 'currency' or field.type == 'percent' %}
+                    <input
+                        type="number"
+                        name="{{ field.name }}"
+                        id="id_{{ field.name }}"
+                        class="form-control"
+                        {% if field.type == 'decimal' or field.type == 'currency' %}step="0.01"{% endif %}
+                        {% if field.type == 'percent' %}min="0" max="100" step="0.01"{% endif %}
+                        {% if field.required %}required{% endif %}
+                        {% if field.readonly %}disabled{% endif %}
+                        placeholder="{{ field.description|default:'' }}"
+                        value="{% if document %}{{ document.data|get_item:field.name|default:'' }}{% endif %}"
+                    >
+
+                {% elif field.type == 'date' %}
+                    <input
+                        type="date"
+                        name="{{ field.name }}"
+                        id="id_{{ field.name }}"
+                        class="form-control"
+                        {% if field.required %}required{% endif %}
+                        {% if field.readonly %}disabled{% endif %}
+                        value="{% if document %}{{ document.data|get_item:field.name|default:'' }}{% endif %}"
+                    >
+
+                {% elif field.type == 'datetime' %}
+                    <input
+                        type="datetime-local"
+                        name="{{ field.name }}"
+                        id="id_{{ field.name }}"
+                        class="form-control"
+                        {% if field.required %}required{% endif %}
+                        {% if field.readonly %}disabled{% endif %}
+                        value="{% if document %}{{ document.data|get_item:field.name|default:'' }}{% endif %}"
+                    >
+
+                {% elif field.type == 'email' %}
+                    <input
+                        type="email"
+                        name="{{ field.name }}"
+                        id="id_{{ field.name }}"
+                        class="form-control"
+                        {% if field.required %}required{% endif %}
+                        {% if field.readonly %}disabled{% endif %}
+                        placeholder="{{ field.description|default:'' }}"
+                        value="{% if document %}{{ document.data|get_item:field.name|default:'' }}{% endif %}"
+                    >
+
+                {% elif field.type == 'url' %}
+                    <input
+                        type="url"
+                        name="{{ field.name }}"
+                        id="id_{{ field.name }}"
+                        class="form-control"
+                        {% if field.required %}required{% endif %}
+                        {% if field.readonly %}disabled{% endif %}
+                        placeholder="{{ field.description|default:'' }}"
+                        value="{% if document %}{{ document.data|get_item:field.name|default:'' }}{% endif %}"
+                    >
+
+                {% elif field.type == 'phone' %}
+                    <input
+                        type="tel"
+                        name="{{ field.name }}"
+                        id="id_{{ field.name }}"
+                        class="form-control"
+                        {% if field.required %}required{% endif %}
+                        {% if field.readonly %}disabled{% endif %}
+                        placeholder="{{ field.description|default:'' }}"
+                        value="{% if document %}{{ document.data|get_item:field.name|default:'' }}{% endif %}"
+                    >
+
+                {% elif field.type == 'color' %}
+                    <input
+                        type="color"
+                        name="{{ field.name }}"
+                        id="id_{{ field.name }}"
+                        class="form-control"
+                        {% if field.required %}required{% endif %}
+                        {% if field.readonly %}disabled{% endif %}
+                        value="{% if document %}{{ document.data|get_item:field.name|default:'#000000' }}{% endif %}"
+                    >
+
+                {% else %}
+                    {# Default to text input for string and other types #}
+                    <input
+                        type="text"
+                        name="{{ field.name }}"
+                        id="id_{{ field.name }}"
+                        class="form-control"
+                        {% if field.required %}required{% endif %}
+                        {% if field.readonly %}disabled{% endif %}
+                        {% if field.unique %}pattern="[a-zA-Z0-9_-]+"{% endif %}
+                        placeholder="{{ field.description|default:'' }}"
+                        value="{% if document %}{{ document.data|get_item:field.name|default:'' }}{% endif %}"
+                    >
+                {% endif %}
+
+                {% if field.description %}
+                <div class="help-text">{{ field.description }}</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">💾 Save {{ doctype.name }}</button>
+                <a href="{% url 'document_list' doctype.slug %}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

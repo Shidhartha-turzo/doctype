@@ -1,0 +1,147 @@
+{% extends "admin/change_form.html" %}
+{% load static %}
+
+{% block after_field_sets %}
+{{ block.super }}
+
+<!-- Visual Field Builder -->
+<div class="module" id="field-builder-section">
+    <h2>Field Builder</h2>
+    <div class="field-builder-container">
+        <div class="field-builder-toolbar">
+            <button type="button" class="button" id="add-field-btn">
+                <span class="icon">+</span> Add Field
+            </button>
+            <button type="button" class="button" id="import-json-btn">
+                <span class="icon">↓</span> Import JSON
+            </button>
+            <button type="button" class="button" id="export-json-btn">
+                <span class="icon">↑</span> Export JSON
+            </button>
+        </div>
+
+        <div class="fields-list" id="fields-list">
+            <!-- Fields will be dynamically added here -->
+        </div>
+
+        <div class="no-fields-message" id="no-fields-message" style="display: none;">
+            <p>No fields added yet. Click "Add Field" to start building your schema.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Field Editor Modal -->
+<div id="field-editor-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="modal-title">Add Field</h3>
+            <button type="button" class="modal-close" id="close-modal-btn">×</button>
+        </div>
+        <div class="modal-body">
+            <div id="field-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="field-name">Field Name (Internal)*</label>
+                        <input type="text" id="field-name" name="name" required
+                               placeholder="e.g., customer_name" pattern="[a-z_]+">
+                        <small>Lowercase letters and underscores only</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="field-label">Label (Display)*</label>
+                        <input type="text" id="field-label" name="label" required
+                               placeholder="e.g., Customer Name">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="field-type">Field Type*</label>
+                        <select id="field-type" name="type" required>
+                            {% for field_type in field_types %}
+                            <option value="{{ field_type }}">{{ field_type|title }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="field-default">Default Value</label>
+                        <input type="text" id="field-default" name="default"
+                               placeholder="Optional default value">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group checkbox-group">
+                        <label>
+                            <input type="checkbox" id="field-required" name="required">
+                            Required Field
+                        </label>
+                    </div>
+                    <div class="form-group checkbox-group">
+                        <label>
+                            <input type="checkbox" id="field-unique" name="unique">
+                            Unique Values
+                        </label>
+                    </div>
+                    <div class="form-group checkbox-group">
+                        <label>
+                            <input type="checkbox" id="field-readonly" name="readonly">
+                            Read Only
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Type-specific options -->
+                <div id="link-options" class="type-specific-options" style="display: none;">
+                    <div class="form-group">
+                        <label for="link-doctype">Link to Doctype*</label>
+                        <input type="text" id="link-doctype" name="link_doctype"
+                               placeholder="e.g., Customer">
+                    </div>
+                </div>
+
+                <div id="select-options" class="type-specific-options" style="display: none;">
+                    <div class="form-group">
+                        <label for="select-options-input">Options (comma-separated)*</label>
+                        <input type="text" id="select-options-input" name="options"
+                               placeholder="e.g., Active, Inactive, Pending">
+                        <small>Separate options with commas</small>
+                    </div>
+                </div>
+
+                <div id="table-options" class="type-specific-options" style="display: none;">
+                    <div class="form-group">
+                        <label for="child-doctype">Child Doctype*</label>
+                        <input type="text" id="child-doctype" name="child_doctype"
+                               placeholder="e.g., Order Item">
+                    </div>
+                </div>
+
+                <div id="computed-options" class="type-specific-options" style="display: none;">
+                    <div class="form-group">
+                        <label for="formula">Formula*</label>
+                        <input type="text" id="formula" name="formula"
+                               placeholder="e.g., sum(items.amount)">
+                        <small>Examples: quantity * rate, sum(items.total), date_diff(end_date, start_date)</small>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="field-description">Description / Help Text</label>
+                    <textarea id="field-description" name="description" rows="2"
+                              placeholder="Optional description to help users"></textarea>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="button default" id="cancel-btn">Cancel</button>
+            <button type="button" class="button primary" id="save-field-btn">Save Field</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Pass Django context to JavaScript
+    window.doctypeFields = {{ doctype_fields_json|safe }};
+    window.fieldTypes = {{ field_types_json|safe }};
+</script>
+{% endblock %}

@@ -1,6 +1,7 @@
 from django.contrib import admin
 from .security_models import (
-    SystemSettings, LoginAttempt, IPBlacklist, SecurityAuditLog, APIKey
+    SystemSettings, LoginAttempt, IPBlacklist, SecurityAuditLog, APIKey,
+    UserLoginHistory, ChangeLog
 )
 
 
@@ -174,3 +175,100 @@ class APIKeyAdmin(admin.ModelAdmin):
             # Display the key to admin (only shown once)
             self.message_user(request, f'API Key created: {key} (Save this key, it will not be shown again!)')
         super().save_model(request, obj, form, change)
+
+
+@admin.register(UserLoginHistory)
+class UserLoginHistoryAdmin(admin.ModelAdmin):
+    """Admin interface for User Login History"""
+    list_display = ['username', 'success', 'login_type', 'ip_address', 'device_type',
+                   'login_at', 'session_duration']
+    list_filter = ['success', 'login_type', 'device_type', 'login_at']
+    search_fields = ['username', 'ip_address', 'user_agent']
+    readonly_fields = ['user', 'username', 'login_type', 'success', 'failure_reason',
+                       'ip_address', 'user_agent', 'device_type', 'country', 'city',
+                       'session_key', 'login_at', 'logout_at', 'session_duration', 'metadata']
+    date_hierarchy = 'login_at'
+
+    fieldsets = (
+        ('User Information', {
+            'fields': ('user', 'username')
+        }),
+        ('Login Details', {
+            'fields': ('login_type', 'success', 'failure_reason')
+        }),
+        ('Network Information', {
+            'fields': ('ip_address', 'user_agent', 'device_type')
+        }),
+        ('Geographic Information', {
+            'fields': ('country', 'city')
+        }),
+        ('Session Information', {
+            'fields': ('session_key', 'login_at', 'logout_at', 'session_duration')
+        }),
+        ('Metadata', {
+            'fields': ('metadata',),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def has_add_permission(self, request):
+        """Prevent manual creation"""
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        """Make read-only"""
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        """Allow deletion for cleanup"""
+        return request.user.is_superuser
+
+
+@admin.register(ChangeLog)
+class ChangeLogAdmin(admin.ModelAdmin):
+    """Admin interface for Change Log"""
+    list_display = ['change_type', 'title', 'impact_level', 'performed_by',
+                   'deployed_at', 'rolled_back', 'approval_status']
+    list_filter = ['change_type', 'impact_level', 'approval_status', 'rolled_back', 'deployed_at']
+    search_fields = ['title', 'description', 'version', 'change_request_id', 'jira_ticket', 'git_commit']
+    readonly_fields = ['deployed_at', 'created_at', 'updated_at']
+    date_hierarchy = 'deployed_at'
+
+    fieldsets = (
+        ('Change Information', {
+            'fields': ('change_type', 'title', 'description', 'version')
+        }),
+        ('Impact Assessment', {
+            'fields': ('impact_level', 'affected_systems')
+        }),
+        ('Change Management', {
+            'fields': ('change_request_id', 'approval_status', 'approved_by')
+        }),
+        ('Execution', {
+            'fields': ('performed_by', 'deployed_at')
+        }),
+        ('Rollback', {
+            'fields': ('can_rollback', 'rollback_instructions', 'rolled_back',
+                      'rolled_back_at', 'rolled_back_by')
+        }),
+        ('Testing & Validation', {
+            'fields': ('testing_notes', 'validation_status')
+        }),
+        ('Documentation', {
+            'fields': ('documentation_url', 'jira_ticket', 'git_commit', 'git_branch')
+        }),
+        ('Metadata', {
+            'fields': ('metadata', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    actions = ['mark_as_rolled_back']
+
+    def mark_as_rolled_back(self, request, queryset):
+        """Action to mark selected changes as rolled back"""
+        for change in queryset:
+            if not change.rolled_back:
+                change.mark_rollback(request.user, 'Marked via admin action')
+        self.message_user(request, f'{queryset.count()} change(s) marked as rolled back.')
+    mark_as_rolled_back.short_description = 'Mark selected changes as rolled back'

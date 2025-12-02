@@ -34,6 +34,8 @@ The Doctype Engine is an enterprise-grade framework that combines the flexibilit
 ### Application Framework
 - Django 5.2.8 with Django REST Framework 3.15.2
 - Dynamic doctype system with module organization
+- **Visual Field Builder** - Drag-and-drop interface for schema design (NEW!)
+- Slug-based admin URLs for readable doctype access (NEW!)
 - JSON-based schema storage (no dynamic table creation)
 - 20+ field types including computed fields
 - Support for hierarchical data (tree structures)
@@ -952,9 +954,22 @@ locust -f locustfile.py --host=http://localhost:8000
 
 ## Additional Documentation
 
+### Core Documentation
 - [ENGINE_GUIDE.md](ENGINE_GUIDE.md) - Complete guide to the doctype engine
 - [API_GUIDE.md](API_GUIDE.md) - Detailed API documentation
 - [API_EXAMPLES.md](API_EXAMPLES.md) - API usage examples
+
+### Getting Started
+- [QUICKSTART_10MIN.md](QUICKSTART_10MIN.md) - Build your first app in 10 minutes
+- [REAL_WORLD_APPLICATIONS.md](REAL_WORLD_APPLICATIONS.md) - 6 complete use case examples
+
+### Feature Guides
+- [VISUAL_FIELD_BUILDER.md](VISUAL_FIELD_BUILDER.md) - Drag-and-drop schema designer guide
+- [SECURITY_SUMMARY.md](SECURITY_SUMMARY.md) - Quick security reference
+- [PRODUCTION_LOGGING.md](PRODUCTION_LOGGING.md) - Production logging & change management guide
+
+### Project Information
+- [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) - Complete project overview and status
 
 ## Support and Contributing
 
