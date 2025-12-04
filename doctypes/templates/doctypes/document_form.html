@@ -376,6 +376,14 @@
             </div>
             {% endfor %}
 
+            {% if document.id %}
+            <!-- Workflow Widget -->
+            {% include "doctypes/workflow_widget.html" %}
+
+            <!-- Version History Widget -->
+            {% include "doctypes/version_widget.html" %}
+            {% endif %}
+
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">💾 Save {{ doctype.name }}</button>
                 <a href="{% url 'document_list' doctype.slug %}" class="btn btn-secondary">Cancel</a>

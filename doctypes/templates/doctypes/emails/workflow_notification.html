@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 8px 8px 0 0;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .content {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 0 0 8px 8px;
+        }
+        .state-change {
+            background: white;
+            padding: 20px;
+            border-radius: 6px;
+            margin: 20px 0;
+            border-left: 4px solid #667eea;
+        }
+        .state-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .state-from {
+            background: #e9ecef;
+            color: #495057;
+        }
+        .state-to {
+            background: #667eea;
+            color: white;
+        }
+        .arrow {
+            display: inline-block;
+            margin: 0 10px;
+            font-size: 20px;
+            color: #667eea;
+        }
+        .info-row {
+            margin: 10px 0;
+            padding: 10px 0;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        .info-label {
+            font-weight: 600;
+            color: #6c757d;
+            display: inline-block;
+            width: 120px;
+        }
+        .info-value {
+            color: #212529;
+        }
+        .comment-box {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .comment-label {
+            font-weight: 600;
+            color: #856404;
+            margin-bottom: 8px;
+        }
+        .comment-text {
+            color: #212529;
+            font-style: italic;
+        }
+        .action-button {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            margin: 20px 0;
+        }
+        .action-button:hover {
+            background: #5568d3;
+        }
+        .footer {
+            text-align: center;
+            color: #6c757d;
+            font-size: 12px;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #dee2e6;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Workflow State Changed</h1>
+        <p style="margin: 10px 0 0 0; opacity: 0.9;">{{ doctype_name }}</p>
+    </div>
+
+    <div class="content">
+        <div class="state-change">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <span class="state-badge state-from">{{ from_state }}</span>
+                <span class="arrow">→</span>
+                <span class="state-badge state-to">{{ to_state }}</span>
+            </div>
+
+            <div class="info-row">
+                <span class="info-label">Document:</span>
+                <span class="info-value">{{ doctype_name }} #{{ document.id }}</span>
+            </div>
+
+            <div class="info-row">
+                <span class="info-label">Changed by:</span>
+                <span class="info-value">{{ changed_by }}</span>
+            </div>
+
+            {% if comment %}
+            <div class="comment-box">
+                <div class="comment-label">Comment:</div>
+                <div class="comment-text">"{{ comment }}"</div>
+            </div>
+            {% endif %}
+        </div>
+
+        <div style="text-align: center;">
+            <a href="{{ document_url }}" class="action-button">View Document</a>
+        </div>
+
+        <div class="footer">
+            <p>This is an automated notification from Doctype Engine.</p>
+            <p>You received this email because you are associated with this document.</p>
+        </div>
+    </div>
+</body>
+</html>

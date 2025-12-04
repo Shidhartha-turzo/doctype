@@ -18,7 +18,7 @@ The child doctype defines the structure of each row in the table.
 
 **Example: Sales Order Item (Child)**
 - Name: `Sales Order Item`
-- **is_child**: ✓ Checked (Important!)
+- **is_child**: [YES] Checked (Important!)
 - Fields:
   - `item_name` (string) - Name of the product
   - `quantity` (integer) - How many
@@ -31,7 +31,7 @@ The parent doctype has a field of type "table" that references the child.
 
 **Example: Sales Order (Parent)**
 - Name: `Sales Order`
-- **is_child**: ✗ Not checked
+- **is_child**: [NO] Not checked
 - Fields:
   - `customer_name` (string) - Who's ordering
   - `order_date` (date) - When
@@ -108,46 +108,46 @@ Let's create a **Sales Order** system together.
 1. Go to Admin → Doctypes → Add Doctype
 2. Fill in:
    - **Name**: `Sales Order Item`
-   - **is_child**: ✓ Check this box
+   - **is_child**: [YES] Check this box
 3. Add Fields:
    - Field 1:
      - Name: `item_name`
      - Label: `Item Name`
      - Type: `string`
-     - Required: ✓
+     - Required: [YES]
    - Field 2:
      - Name: `quantity`
      - Label: `Quantity`
      - Type: `integer`
-     - Required: ✓
+     - Required: [YES]
    - Field 3:
      - Name: `rate`
      - Label: `Rate`
      - Type: `decimal`
-     - Required: ✓
+     - Required: [YES]
    - Field 4:
      - Name: `amount`
      - Label: `Amount`
      - Type: `decimal`
-     - Read Only: ✓
+     - Read Only: [YES]
 4. Save
 
 ### Step 2: Create Parent Doctype
 1. Go to Admin → Doctypes → Add Doctype
 2. Fill in:
    - **Name**: `Sales Order`
-   - **is_child**: ✗ Leave unchecked
+   - **is_child**: [NO] Leave unchecked
 3. Add Fields:
    - Field 1:
      - Name: `customer_name`
      - Label: `Customer Name`
      - Type: `string`
-     - Required: ✓
+     - Required: [YES]
    - Field 2:
      - Name: `order_date`
      - Label: `Order Date`
      - Type: `date`
-     - Required: ✓
+     - Required: [YES]
    - Field 3:
      - Name: `items`
      - Label: `Items`
@@ -192,10 +192,10 @@ curl -X POST http://127.0.0.1:8000/api/core/sales-order/records/ \
 ## Current Limitations & Future Improvements
 
 ### What Works Now:
-✓ Creating child doctypes with `is_child=True`
-✓ Creating table fields that reference child doctypes
-✓ Storing child table data as JSON arrays in documents
-✓ Validating field types in child tables
+[YES] Creating child doctypes with `is_child=True`
+[YES] Creating table fields that reference child doctypes
+[YES] Storing child table data as JSON arrays in documents
+[YES] Validating field types in child tables
 
 ### What Needs Improvement:
 - [ ] Visual UI for adding/editing child table rows in admin

@@ -1,5 +1,6 @@
 from django.db import models
-from django.contrib.auth.models import User, Group
+from django.contrib.auth.models import Group
+from django.conf import settings
 from django.utils.text import slugify
 from django.core.exceptions import ValidationError
 from django.db.models import Q
@@ -30,7 +31,7 @@ class Module(models.Model):
     is_active = models.BooleanField(default=True)
     is_custom = models.BooleanField(default=True, help_text="Custom vs system module")
 
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='created_modules')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='created_modules')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -104,7 +105,7 @@ class Doctype(models.Model):
     title_field = models.CharField(max_length=255, blank=True, help_text="Field to use as document title")
 
     # Metadata
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='created_doctypes')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='created_doctypes')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     version = models.IntegerField(default=1)
@@ -191,7 +192,7 @@ class Document(models.Model):
         (1, 'Submitted'),
         (2, 'Cancelled'),
     ])
-    submitted_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='submitted_documents')
+    submitted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='submitted_documents')
     submitted_at = models.DateTimeField(null=True, blank=True)
 
     # Hierarchy (for tree doctypes)
@@ -199,10 +200,10 @@ class Document(models.Model):
     is_group = models.BooleanField(default=False, help_text="Is this a group/folder")
 
     # Metadata
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='created_documents')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='created_documents')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    modified_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='modified_documents')
+    modified_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='modified_documents')
 
     # Versioning
     version_number = models.IntegerField(default=1)
@@ -210,7 +211,7 @@ class Document(models.Model):
     # Soft delete
     is_deleted = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(null=True, blank=True)
-    deleted_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='deleted_documents')
+    deleted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='deleted_documents')
 
     class Meta:
         ordering = ['-created_at']
@@ -311,7 +312,7 @@ class DocumentShare(models.Model):
     ]
 
     document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='shares')
-    shared_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='shared_documents')
+    shared_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='shared_documents')
     recipient_email = models.EmailField()
     recipient_name = models.CharField(max_length=255, blank=True)
 
@@ -370,7 +371,7 @@ class DocumentLink(models.Model):
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         related_name='created_links'
@@ -454,3 +455,13 @@ class DocumentLinkMultiple(models.Model):
 
     def __str__(self):
         return f"{self.source_document} -> {self.field_name}[{self.order}] -> {self.target_document}"
+
+# Import security models for migration
+from .security_models import (
+    VersionAccessLog,
+    SecurityEvent,
+    RateLimitLog,
+    VersionIntegrityLog,
+    DataRetentionLog
+)
+

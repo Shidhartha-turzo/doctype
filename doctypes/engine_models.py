@@ -3,7 +3,8 @@ Extended models for the Doctype Engine
 Includes: Permissions, Workflows, Versioning, Naming Series, Hooks
 """
 from django.db import models
-from django.contrib.auth.models import User, Group
+from django.contrib.auth.models import Group
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from .models import Doctype, Document
 
@@ -60,6 +61,7 @@ class DoctypePermission(models.Model):
 class DocumentVersion(models.Model):
     """
     Tracks all changes to documents for audit trail.
+    Security: Includes integrity checking via hash and signature.
     """
     document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='versions')
     version_number = models.IntegerField()
@@ -67,19 +69,88 @@ class DocumentVersion(models.Model):
     data_snapshot = models.JSONField(help_text="Complete data at this version")
     changes = models.JSONField(help_text="What changed from previous version")
 
-    changed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     changed_at = models.DateTimeField(auto_now_add=True)
     comment = models.TextField(blank=True)
+
+    # Security: Data integrity checking (OWASP A08)
+    data_hash = models.CharField(max_length=64, blank=True, db_index=True,
+                                  help_text="SHA-256 hash of data_snapshot")
+    signature = models.TextField(blank=True,
+                                 help_text="HMAC signature for tamper detection")
 
     class Meta:
         ordering = ['-version_number']
         unique_together = ['document', 'version_number']
         indexes = [
             models.Index(fields=['document', '-version_number']),
+            models.Index(fields=['data_hash']),
         ]
 
     def __str__(self):
         return f"{self.document} v{self.version_number}"
+
+    def calculate_hash(self):
+        """Calculate SHA-256 hash of data snapshot"""
+        import hashlib
+        import json
+
+        if not self.data_snapshot:
+            return ''
+
+        data_str = json.dumps(self.data_snapshot, sort_keys=True)
+        return hashlib.sha256(data_str.encode()).hexdigest()
+
+    def calculate_signature(self):
+        """Calculate HMAC signature for tamper detection"""
+        import hmac
+        import hashlib
+        import json
+        from django.conf import settings
+
+        if not self.data_snapshot:
+            return ''
+
+        data_str = json.dumps(self.data_snapshot, sort_keys=True)
+
+        # Use secret key for HMAC
+        secret_key = getattr(settings, 'VERSION_SIGNING_KEY', settings.SECRET_KEY)
+
+        return hmac.new(
+            secret_key.encode(),
+            data_str.encode(),
+            hashlib.sha256
+        ).hexdigest()
+
+    def verify_integrity(self):
+        """
+        Verify version data hasn't been tampered with
+
+        Returns:
+            bool: True if data is intact, False if tampered
+
+        Security:
+            Addresses OWASP A08 (Software and Data Integrity Failures)
+        """
+        import hmac
+
+        # Calculate current hash
+        calculated_hash = self.calculate_hash()
+        if calculated_hash != self.data_hash:
+            return False
+
+        # Verify signature
+        calculated_sig = self.calculate_signature()
+        return hmac.compare_digest(calculated_sig, self.signature)
+
+    def save(self, *args, **kwargs):
+        """Override save to automatically calculate hash and signature"""
+        # Calculate integrity fields
+        if self.data_snapshot:
+            self.data_hash = self.calculate_hash()
+            self.signature = self.calculate_signature()
+
+        super().save(*args, **kwargs)
 
 
 class Workflow(models.Model):
@@ -94,7 +165,7 @@ class Workflow(models.Model):
     is_active = models.BooleanField(default=True)
     workflow_data = models.JSONField(help_text="Workflow definition with states and transitions")
 
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -161,7 +232,7 @@ class DocumentWorkflowState(models.Model):
     current_state = models.ForeignKey(WorkflowState, on_delete=models.CASCADE)
 
     state_changed_at = models.DateTimeField(auto_now=True)
-    state_changed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    state_changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
 
     class Meta:
         indexes = [
@@ -271,7 +342,7 @@ class CustomField(models.Model):
     is_hidden = models.BooleanField(default=False)
     is_readonly = models.BooleanField(default=False)
 
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -306,7 +377,7 @@ class Report(models.Model):
     is_public = models.BooleanField(default=False)
     allowed_roles = models.ManyToManyField(Group, blank=True)
 
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -245,13 +245,13 @@ curl -X POST http://localhost:8000/api/core/custom-fields/ \
 ## Congratulations!
 
 In just 10 minutes, you've:
-- ✅ Created a module
-- ✅ Defined a doctype with 7 fields
-- ✅ Created sample data
-- ✅ Queried and filtered data
-- ✅ Updated records
-- ✅ Extended the schema with custom fields
-- ✅ Linked multiple doctypes together
+- [YES] Created a module
+- [YES] Defined a doctype with 7 fields
+- [YES] Created sample data
+- [YES] Queried and filtered data
+- [YES] Updated records
+- [YES] Extended the schema with custom fields
+- [YES] Linked multiple doctypes together
 
 ## What's Next?
 
@@ -531,4 +531,4 @@ curl "http://localhost:8000/api/core/doctypes/1/records/?page=1&page_size=10" \
 - Admin Panel: http://localhost:8000/admin/
 - OpenAPI Schema: http://localhost:8000/api/schema/
 
-Happy building! 🚀
+Happy building! 

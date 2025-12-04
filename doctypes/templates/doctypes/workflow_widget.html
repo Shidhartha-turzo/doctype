@@ -1,0 +1,375 @@
+{% if document.id %}
+<div class="workflow-widget" id="workflowWidget">
+    <div class="workflow-loading" id="workflowLoading">
+        Loading workflow...
+    </div>
+
+    <div class="workflow-content" id="workflowContent" style="display:none;">
+        <div class="workflow-current-state">
+            <div class="state-badge" id="currentStateBadge"></div>
+        </div>
+
+        <div class="workflow-transitions" id="workflowTransitions">
+            <!-- Transitions will be loaded here dynamically -->
+        </div>
+
+        <div class="workflow-history-section">
+            <button type="button" class="btn btn-link" onclick="toggleWorkflowHistory()">
+                View History
+            </button>
+            <div class="workflow-history" id="workflowHistory" style="display:none;">
+                <!-- History will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <div class="workflow-none" id="workflowNone" style="display:none;">
+        <p class="text-muted">No workflow configured for this doctype.</p>
+    </div>
+</div>
+
+<!-- Workflow Transition Modal -->
+<div class="modal fade" id="transitionModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="transitionModalTitle">Workflow Transition</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p id="transitionMessage"></p>
+                <div class="form-group" id="commentGroup" style="display:none;">
+                    <label for="transitionComment">Comment <span class="required">*</span></label>
+                    <textarea class="form-control" id="transitionComment" rows="3" placeholder="Enter comment..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmTransition">Confirm</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.workflow-widget {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 1px solid #dee2e6;
+}
+
+.workflow-current-state {
+    margin-bottom: 15px;
+}
+
+.state-badge {
+    display: inline-block;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 14px;
+    color: white;
+}
+
+.workflow-transitions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.workflow-transition-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.workflow-transition-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.workflow-transition-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.workflow-transition-btn.approve {
+    background: #28a745;
+    color: white;
+}
+
+.workflow-transition-btn.reject {
+    background: #dc3545;
+    color: white;
+}
+
+.workflow-transition-btn.default {
+    background: #007bff;
+    color: white;
+}
+
+.workflow-history {
+    margin-top: 15px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.history-item {
+    background: white;
+    padding: 12px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    border-left: 3px solid #007bff;
+}
+
+.history-item .history-transition {
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 5px;
+}
+
+.history-item .history-meta {
+    font-size: 12px;
+    color: #6c757d;
+}
+
+.history-item .history-comment {
+    margin-top: 8px;
+    font-style: italic;
+    color: #495057;
+    padding: 8px;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.workflow-loading {
+    text-align: center;
+    padding: 20px;
+    color: #6c757d;
+}
+</style>
+
+<script>
+let currentDocumentId = {{ document.id }};
+let currentTransition = null;
+
+// Load workflow state on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadWorkflowState();
+});
+
+function loadWorkflowState() {
+    fetch(`/api/doctypes/documents/${currentDocumentId}/workflow/state/`)
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('workflowLoading').style.display = 'none';
+
+            if (!data.has_workflow) {
+                document.getElementById('workflowNone').style.display = 'block';
+                return;
+            }
+
+            document.getElementById('workflowContent').style.display = 'block';
+
+            // Set current state
+            const stateBadge = document.getElementById('currentStateBadge');
+            stateBadge.textContent = `Current State: ${data.current_state.name}`;
+            stateBadge.style.background = data.current_state.color || '#007bff';
+
+            // Load transitions
+            const transitionsContainer = document.getElementById('workflowTransitions');
+            transitionsContainer.innerHTML = '';
+
+            data.available_transitions.forEach(transition => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'workflow-transition-btn';
+
+                // Determine button style based on label
+                if (transition.label.toLowerCase().includes('approve')) {
+                    button.classList.add('approve');
+                } else if (transition.label.toLowerCase().includes('reject')) {
+                    button.classList.add('reject');
+                } else {
+                    button.classList.add('default');
+                }
+
+                button.textContent = transition.label;
+                button.disabled = !transition.can_execute;
+
+                if (transition.can_execute) {
+                    button.onclick = () => initiateTransition(transition);
+                } else if (transition.reason) {
+                    button.title = transition.reason;
+                }
+
+                transitionsContainer.appendChild(button);
+            });
+
+            // Load history
+            loadWorkflowHistory();
+        })
+        .catch(error => {
+            console.error('Error loading workflow:', error);
+            document.getElementById('workflowLoading').innerHTML =
+                '<span style="color: #dc3545;">Error loading workflow</span>';
+        });
+}
+
+function initiateTransition(transition) {
+    currentTransition = transition;
+
+    const modal = document.getElementById('transitionModal');
+    const title = document.getElementById('transitionModalTitle');
+    const message = document.getElementById('transitionMessage');
+    const commentGroup = document.getElementById('commentGroup');
+    const commentField = document.getElementById('transitionComment');
+
+    title.textContent = transition.label;
+    message.textContent = `Are you sure you want to transition from "${transition.from_state}" to "${transition.to_state}"?`;
+
+    if (transition.require_comment) {
+        commentGroup.style.display = 'block';
+        commentField.required = true;
+    } else {
+        commentGroup.style.display = 'none';
+        commentField.required = false;
+    }
+
+    commentField.value = '';
+
+    // Show modal (Bootstrap 4/5)
+    if (typeof bootstrap !== 'undefined') {
+        new bootstrap.Modal(modal).show();
+    } else {
+        $(modal).modal('show');
+    }
+}
+
+function executeTransition() {
+    if (!currentTransition) return;
+
+    const comment = document.getElementById('transitionComment').value;
+
+    if (currentTransition.require_comment && !comment.trim()) {
+        alert('Comment is required for this transition');
+        return;
+    }
+
+    const confirmBtn = document.getElementById('confirmTransition');
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Processing...';
+
+    fetch(`/api/doctypes/documents/${currentDocumentId}/workflow/transition/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({
+            transition_id: currentTransition.id,
+            comment: comment || null,
+            notify: true
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Close modal
+            const modal = document.getElementById('transitionModal');
+            if (typeof bootstrap !== 'undefined') {
+                bootstrap.Modal.getInstance(modal).hide();
+            } else {
+                $(modal).modal('hide');
+            }
+
+            // Reload workflow state
+            loadWorkflowState();
+
+            // Show success message
+            alert(`Success: ${data.message}`);
+        } else {
+            alert(`Error: ${data.error}`);
+        }
+    })
+    .catch(error => {
+        console.error('Error executing transition:', error);
+        alert('An error occurred during the transition');
+    })
+    .finally(() => {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Confirm';
+    });
+}
+
+function loadWorkflowHistory() {
+    fetch(`/api/doctypes/documents/${currentDocumentId}/workflow/history/`)
+        .then(response => response.json())
+        .then(data => {
+            const historyContainer = document.getElementById('workflowHistory');
+            historyContainer.innerHTML = '';
+
+            if (!data.history || data.history.length === 0) {
+                historyContainer.innerHTML = '<p class="text-muted">No history available</p>';
+                return;
+            }
+
+            data.history.forEach(item => {
+                const historyItem = document.createElement('div');
+                historyItem.className = 'history-item';
+
+                historyItem.innerHTML = `
+                    <div class="history-transition">
+                        ${item.from_state} → ${item.to_state}
+                    </div>
+                    <div class="history-meta">
+                        ${item.changed_by || 'System'} • ${new Date(item.changed_at).toLocaleString()}
+                    </div>
+                    ${item.comment ? `<div class="history-comment">"${item.comment}"</div>` : ''}
+                `;
+
+                historyContainer.appendChild(historyItem);
+            });
+        })
+        .catch(error => {
+            console.error('Error loading history:', error);
+        });
+}
+
+function toggleWorkflowHistory() {
+    const history = document.getElementById('workflowHistory');
+    history.style.display = history.style.display === 'none' ? 'block' : 'none';
+}
+
+// Attach to confirm button
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('confirmTransition').addEventListener('click', executeTransition);
+});
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endif %}

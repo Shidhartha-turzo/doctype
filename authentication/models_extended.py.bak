@@ -1,0 +1,637 @@
+"""
+Extended authentication models for Signup & Onboarding Module
+Includes OAuth, MFA, and email-based user management
+"""
+
+from django.db import models
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.core.validators import EmailValidator
+from django.utils import timezone
+from django.utils.crypto import get_random_string
+import secrets
+import pyotp
+from datetime import timedelta
+
+
+class UserManager(BaseUserManager):
+    """Custom user manager with email as primary identifier"""
+
+    def create_user(self, email, password=None, **extra_fields):
+        """Create and save a regular user with email as identifier"""
+        if not email:
+            raise ValueError('Email address is required')
+
+        email = self.normalize_email(email)
+        user = self.model(email=email, **extra_fields)
+
+        if password:
+            user.set_password(password)
+
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, email, password=None, **extra_fields):
+        """Create and save a superuser"""
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('is_email_fixed', True)
+        extra_fields.setdefault('email_verified', True)
+        extra_fields.setdefault('onboarding_status', 'active')
+
+        return self.create_user(email, password, **extra_fields)
+
+
+class User(AbstractBaseUser, PermissionsMixin):
+    """
+    Extended User model with email as primary key
+    Supports self-signup, admin onboarding, OAuth, and MFA
+
+    This replaces Django's default User model.
+    Set AUTH_USER_MODEL = 'authentication.User' in settings.py
+    """
+
+    ONBOARDING_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('invited', 'Invited'),
+        ('active', 'Active'),
+        ('suspended', 'Suspended'),
+        ('deleted', 'Deleted'),
+    ]
+
+    SIGNUP_SOURCE_CHOICES = [
+        ('self_signup', 'Self Signup'),
+        ('admin_onboarded', 'Admin Onboarded'),
+        ('oauth', 'OAuth'),
+        ('imported', 'Imported'),
+    ]
+
+    # Primary identifier - email
+    email = models.EmailField(
+        'email address',
+        unique=True,
+        primary_key=True,
+        validators=[EmailValidator()],
+        help_text='Primary email address used for login and notifications'
+    )
+
+    # Fix reverse accessor conflicts with custom related_name
+    groups = models.ManyToManyField(
+        'auth.Group',
+        verbose_name='groups',
+        blank=True,
+        help_text='The groups this user belongs to.',
+        related_name='custom_user_set',
+        related_query_name='custom_user',
+    )
+    user_permissions = models.ManyToManyField(
+        'auth.Permission',
+        verbose_name='user permissions',
+        blank=True,
+        help_text='Specific permissions for this user.',
+        related_name='custom_user_set',
+        related_query_name='custom_user',
+    )
+
+    # User profile
+    username = models.CharField(
+        max_length=150,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text='Optional username (auto-generated from email if not provided)'
+    )
+    full_name = models.CharField(max_length=255, blank=True)
+    first_name = models.CharField(max_length=150, blank=True)  # For compatibility
+    last_name = models.CharField(max_length=150, blank=True)   # For compatibility
+    phone = models.CharField(max_length=20, blank=True, null=True)
+
+    # Email management
+    is_email_fixed = models.BooleanField(
+        default=False,
+        help_text='True if this is a confirmed, fixed notification email'
+    )
+    email_verified = models.BooleanField(
+        default=False,
+        help_text='True if email has been verified'
+    )
+    email_verification_token = models.CharField(max_length=64, blank=True, null=True)
+    email_verification_sent_at = models.DateTimeField(null=True, blank=True)
+
+    # Onboarding tracking
+    onboarding_status = models.CharField(
+        max_length=20,
+        choices=ONBOARDING_STATUS_CHOICES,
+        default='pending'
+    )
+    signup_source = models.CharField(
+        max_length=20,
+        choices=SIGNUP_SOURCE_CHOICES,
+        default='self_signup'
+    )
+    onboarding_completed_at = models.DateTimeField(null=True, blank=True)
+
+    # Django admin/staff flags
+    is_staff = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+
+    # MFA
+    mfa_enabled = models.BooleanField(default=False)
+    mfa_required = models.BooleanField(
+        default=False,
+        help_text='True if MFA is required by policy'
+    )
+
+    # OAuth
+    oauth_provider = models.CharField(max_length=50, blank=True, null=True)
+    oauth_uid = models.CharField(max_length=255, blank=True, null=True)
+
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    last_login = models.DateTimeField(null=True, blank=True)
+
+    objects = UserManager()
+
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = []
+
+    class Meta:
+        db_table = 'auth_user_extended'
+        verbose_name = 'User'
+        verbose_name_plural = 'Users'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.email
+
+    def save(self, *args, **kwargs):
+        # Auto-generate username from email if not provided
+        if not self.username:
+            self.username = self.email.split('@')[0]
+            # Ensure uniqueness
+            base_username = self.username
+            counter = 1
+            while User.objects.filter(username=self.username).exclude(email=self.email).exists():
+                self.username = f"{base_username}{counter}"
+                counter += 1
+
+        super().save(*args, **kwargs)
+
+    def generate_email_verification_token(self):
+        """Generate a secure email verification token"""
+        self.email_verification_token = secrets.token_urlsafe(32)
+        self.email_verification_sent_at = timezone.now()
+        self.save(update_fields=['email_verification_token', 'email_verification_sent_at'])
+        return self.email_verification_token
+
+    def verify_email(self, token):
+        """Verify email with token"""
+        if not self.email_verification_token:
+            return False
+
+        # Check token validity (72 hours)
+        if self.email_verification_sent_at:
+            expiry = self.email_verification_sent_at + timedelta(hours=72)
+            if timezone.now() > expiry:
+                return False
+
+        if secrets.compare_digest(self.email_verification_token, token):
+            self.email_verified = True
+            self.is_email_fixed = True
+            self.email_verification_token = None
+
+            # Update onboarding status if pending
+            if self.onboarding_status == 'pending':
+                self.onboarding_status = 'active'
+                self.onboarding_completed_at = timezone.now()
+
+            self.save()
+            return True
+
+        return False
+
+    def can_receive_emails(self):
+        """Check if user can receive emails"""
+        return (
+            self.email and
+            self.is_email_fixed and
+            self.is_active and
+            hasattr(self, 'email_settings') and
+            self.email_settings.notifications_enabled and
+            self.email_settings.email_bounce_status not in ['hard_bounce', 'blocked']
+        )
+
+    def activate_mfa(self):
+        """Activate MFA for this user"""
+        self.mfa_enabled = True
+        self.save(update_fields=['mfa_enabled'])
+
+    def deactivate_mfa(self):
+        """Deactivate MFA for this user"""
+        self.mfa_enabled = False
+        self.save(update_fields=['mfa_enabled'])
+
+
+class UserEmailSettings(models.Model):
+    """
+    Granular email notification settings for users
+    """
+
+    BOUNCE_STATUS_CHOICES = [
+        ('none', 'None'),
+        ('soft_bounce', 'Soft Bounce'),
+        ('hard_bounce', 'Hard Bounce'),
+        ('blocked', 'Blocked'),
+    ]
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='email_settings',
+        primary_key=True
+    )
+
+    # Notification preferences
+    notifications_enabled = models.BooleanField(default=True)
+    marketing_opt_in = models.BooleanField(default=False)
+    security_alerts_enabled = models.BooleanField(default=True)
+
+    # Email delivery tracking
+    last_email_sent_at = models.DateTimeField(null=True, blank=True)
+    email_bounce_status = models.CharField(
+        max_length=20,
+        choices=BOUNCE_STATUS_CHOICES,
+        default='none'
+    )
+    bounce_count = models.IntegerField(default=0)
+    last_bounce_at = models.DateTimeField(null=True, blank=True)
+
+    # Email frequency control
+    daily_email_limit = models.IntegerField(default=50)
+    emails_sent_today = models.IntegerField(default=0)
+    last_email_reset = models.DateField(auto_now_add=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'user_email_settings'
+        verbose_name = 'User Email Setting'
+        verbose_name_plural = 'User Email Settings'
+
+    def __str__(self):
+        return f"Email settings for {self.user.email}"
+
+    def record_email_sent(self):
+        """Record that an email was sent"""
+        today = timezone.now().date()
+
+        if self.last_email_reset != today:
+            self.emails_sent_today = 0
+            self.last_email_reset = today
+
+        self.emails_sent_today += 1
+        self.last_email_sent_at = timezone.now()
+        self.save()
+
+    def can_send_email(self):
+        """Check if we can send an email to this user"""
+        today = timezone.now().date()
+
+        if self.last_email_reset != today:
+            return True
+
+        return self.emails_sent_today < self.daily_email_limit
+
+    def record_bounce(self, bounce_type='soft_bounce'):
+        """Record an email bounce"""
+        self.bounce_count += 1
+        self.last_bounce_at = timezone.now()
+
+        # Hard bounce or too many soft bounces
+        if bounce_type == 'hard_bounce' or self.bounce_count >= 5:
+            self.email_bounce_status = 'hard_bounce'
+        else:
+            self.email_bounce_status = bounce_type
+
+        self.save()
+
+
+class OnboardingInvitation(models.Model):
+    """
+    Tracks admin-initiated onboarding invitations
+    """
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('sent', 'Sent'),
+        ('accepted', 'Accepted'),
+        ('expired', 'Expired'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='invitations')
+    invited_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='sent_invitations'
+    )
+
+    # Invitation details
+    invitation_token = models.CharField(max_length=64, unique=True)
+    invitation_url = models.TextField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+
+    # Email sent
+    email_sent = models.BooleanField(default=False)
+    email_sent_at = models.DateTimeField(null=True, blank=True)
+
+    # Acceptance
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField()
+
+    # Metadata
+    role_assigned = models.CharField(max_length=100, blank=True)
+    welcome_message = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'onboarding_invitations'
+        verbose_name = 'Onboarding Invitation'
+        verbose_name_plural = 'Onboarding Invitations'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Invitation for {self.user.email} - {self.status}"
+
+    def save(self, *args, **kwargs):
+        # Generate token if not exists
+        if not self.invitation_token:
+            self.invitation_token = secrets.token_urlsafe(32)
+
+        # Set expiry (default 7 days)
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(days=7)
+
+        super().save(*args, **kwargs)
+
+    def is_valid(self):
+        """Check if invitation is still valid"""
+        return (
+            self.status in ['pending', 'sent'] and
+            timezone.now() < self.expires_at
+        )
+
+    def accept(self):
+        """Mark invitation as accepted"""
+        if self.is_valid():
+            self.status = 'accepted'
+            self.accepted_at = timezone.now()
+            self.save()
+
+            # Update user status
+            self.user.onboarding_status = 'active'
+            self.user.onboarding_completed_at = timezone.now()
+            self.user.save()
+
+            return True
+        return False
+
+
+class OAuthProvider(models.Model):
+    """
+    OAuth provider configuration and user connections
+    """
+
+    PROVIDER_CHOICES = [
+        ('google', 'Google'),
+        ('github', 'GitHub'),
+        ('microsoft', 'Microsoft'),
+        ('facebook', 'Facebook'),
+        ('linkedin', 'LinkedIn'),
+        ('apple', 'Apple'),
+        ('custom', 'Custom'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='oauth_connections'
+    )
+
+    # Provider details
+    provider = models.CharField(max_length=50, choices=PROVIDER_CHOICES)
+    provider_uid = models.CharField(max_length=255, help_text='User ID from OAuth provider')
+    provider_email = models.EmailField(blank=True)
+    provider_username = models.CharField(max_length=255, blank=True)
+
+    # OAuth tokens
+    access_token = models.TextField(blank=True)
+    refresh_token = models.TextField(blank=True)
+    token_expires_at = models.DateTimeField(null=True, blank=True)
+
+    # Profile data from provider
+    profile_data = models.JSONField(default=dict, blank=True)
+
+    # Status
+    is_active = models.BooleanField(default=True)
+    is_primary = models.BooleanField(
+        default=False,
+        help_text='Primary OAuth method for this user'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    last_login_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'oauth_providers'
+        verbose_name = 'OAuth Provider'
+        verbose_name_plural = 'OAuth Providers'
+        unique_together = [['provider', 'provider_uid']]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.provider} - {self.user.email}"
+
+    def refresh_access_token(self):
+        """Refresh OAuth access token (implementation depends on provider)"""
+        # This would call the provider's token refresh endpoint
+        # Implementation varies by provider
+        pass
+
+
+class MFADevice(models.Model):
+    """
+    Multi-Factor Authentication devices for users
+    """
+
+    DEVICE_TYPE_CHOICES = [
+        ('totp', 'TOTP (Authenticator App)'),
+        ('sms', 'SMS'),
+        ('email', 'Email'),
+        ('backup_codes', 'Backup Codes'),
+        ('hardware_token', 'Hardware Token'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='mfa_devices')
+
+    # Device details
+    device_type = models.CharField(max_length=20, choices=DEVICE_TYPE_CHOICES)
+    device_name = models.CharField(
+        max_length=100,
+        help_text='User-friendly name for this device'
+    )
+
+    # TOTP specific
+    totp_secret = models.CharField(max_length=64, blank=True)
+
+    # SMS/Email specific
+    phone_number = models.CharField(max_length=20, blank=True)
+    email_address = models.EmailField(blank=True)
+
+    # Backup codes
+    backup_codes = models.JSONField(default=list, blank=True)
+
+    # Status
+    is_active = models.BooleanField(default=True)
+    is_primary = models.BooleanField(
+        default=False,
+        help_text='Primary MFA device'
+    )
+    is_verified = models.BooleanField(default=False)
+
+    # Usage tracking
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    use_count = models.IntegerField(default=0)
+    failed_attempts = models.IntegerField(default=0)
+    last_failed_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'mfa_devices'
+        verbose_name = 'MFA Device'
+        verbose_name_plural = 'MFA Devices'
+        ordering = ['-is_primary', '-created_at']
+
+    def __str__(self):
+        return f"{self.device_name} ({self.device_type}) - {self.user.email}"
+
+    def save(self, *args, **kwargs):
+        # Generate TOTP secret if needed
+        if self.device_type == 'totp' and not self.totp_secret:
+            self.totp_secret = pyotp.random_base32()
+
+        # Generate backup codes if needed
+        if self.device_type == 'backup_codes' and not self.backup_codes:
+            self.generate_backup_codes()
+
+        super().save(*args, **kwargs)
+
+    def get_totp_uri(self):
+        """Get TOTP URI for QR code generation"""
+        if self.device_type == 'totp' and self.totp_secret:
+            totp = pyotp.TOTP(self.totp_secret)
+            return totp.provisioning_uri(
+                name=self.user.email,
+                issuer_name='Doctype Engine'
+            )
+        return None
+
+    def verify_totp(self, code):
+        """Verify TOTP code"""
+        if self.device_type != 'totp':
+            return False
+
+        totp = pyotp.TOTP(self.totp_secret)
+        is_valid = totp.verify(code, valid_window=1)
+
+        if is_valid:
+            self.last_used_at = timezone.now()
+            self.use_count += 1
+            self.failed_attempts = 0
+            self.save()
+        else:
+            self.failed_attempts += 1
+            self.last_failed_at = timezone.now()
+            self.save()
+
+        return is_valid
+
+    def generate_backup_codes(self, count=10):
+        """Generate backup codes"""
+        self.backup_codes = [
+            get_random_string(8, allowed_chars='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+            for _ in range(count)
+        ]
+        self.save()
+        return self.backup_codes
+
+    def use_backup_code(self, code):
+        """Use a backup code"""
+        if code.upper() in [c.upper() for c in self.backup_codes]:
+            self.backup_codes.remove(code)
+            self.last_used_at = timezone.now()
+            self.use_count += 1
+            self.save()
+            return True
+        return False
+
+
+class PasswordResetToken(models.Model):
+    """
+    Password reset tokens for users
+    """
+
+    id = models.AutoField(primary_key=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reset_tokens')
+
+    token = models.CharField(max_length=64, unique=True)
+    is_used = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    # Security
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'password_reset_tokens'
+        verbose_name = 'Password Reset Token'
+        verbose_name_plural = 'Password Reset Tokens'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Reset token for {self.user.email}"
+
+    def save(self, *args, **kwargs):
+        if not self.token:
+            self.token = secrets.token_urlsafe(32)
+
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(hours=24)
+
+        super().save(*args, **kwargs)
+
+    def is_valid(self):
+        """Check if token is valid"""
+        return (
+            not self.is_used and
+            timezone.now() < self.expires_at
+        )
+
+    def use(self):
+        """Mark token as used"""
+        self.is_used = True
+        self.used_at = timezone.now()
+        self.save()

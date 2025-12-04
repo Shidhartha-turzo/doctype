@@ -79,12 +79,12 @@ DATABASES = {
 
 ## Why PostgreSQL?
 
-✅ **Better for production** - Handles concurrent connections
-✅ **JSON support** - Native JSONB for doctype schemas
-✅ **Advanced features** - Full-text search, triggers, views
-✅ **Scalability** - Handle millions of records
-✅ **ACID compliance** - Data integrity guaranteed
-✅ **Concurrent writes** - No database locking issues
+[YES] **Better for production** - Handles concurrent connections
+[YES] **JSON support** - Native JSONB for doctype schemas
+[YES] **Advanced features** - Full-text search, triggers, views
+[YES] **Scalability** - Handle millions of records
+[YES] **ACID compliance** - Data integrity guaranteed
+[YES] **Concurrent writes** - No database locking issues
 
 ---
 
@@ -145,9 +145,9 @@ See **POSTGRESQL_SETUP.md** for:
 
 ## Next Steps
 
-1. ✅ PostgreSQL is now installed
-2. ✅ Database schema is created
-3. 📝 Create your first doctype in admin
-4. 🚀 Build your application!
+1. [YES] PostgreSQL is now installed
+2. [YES] Database schema is created
+3.  Create your first doctype in admin
+4.  Build your application!
 
 Visit: http://127.0.0.1:8000/admin/

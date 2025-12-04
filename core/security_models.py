@@ -3,7 +3,7 @@ Security models for the Doctype Engine
 Includes: System Settings, Login Attempts, IP Blacklist, Security Audit Log
 """
 from django.db import models
-from django.contrib.auth.models import User
+from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils import timezone
 from datetime import timedelta
@@ -311,7 +311,7 @@ class SystemSettings(models.Model):
     # Metadata
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         related_name='system_settings_updates'
@@ -482,7 +482,7 @@ class IPBlacklist(models.Model):
 
     # Admin info
     created_by = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -586,7 +586,7 @@ class SecurityAuditLog(models.Model):
 
     # User & IP
     user = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -677,7 +677,7 @@ class APIKey(models.Model):
     )
 
     user = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='api_keys',
         help_text="User this API key belongs to"
@@ -775,7 +775,7 @@ class UserLoginHistory(models.Model):
     """
     # User information
     user = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='login_history',
         help_text="User who logged in"
@@ -1110,7 +1110,7 @@ class ChangeLog(models.Model):
     )
 
     approved_by = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -1120,7 +1120,7 @@ class ChangeLog(models.Model):
 
     # Execution information
     performed_by = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -1158,7 +1158,7 @@ class ChangeLog(models.Model):
     )
 
     rolled_back_by = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

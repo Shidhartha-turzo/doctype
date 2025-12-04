@@ -1,0 +1,619 @@
+<!-- Document Version Management Widget -->
+<div class="card mt-4" id="version-widget">
+    <div class="card-header bg-info text-white">
+        <h5 class="mb-0">
+            <i class="fas fa-history"></i> Version History
+            <span id="current-version-badge" class="badge badge-light float-right">Loading...</span>
+        </h5>
+    </div>
+    <div class="card-body">
+        <div id="version-loading" class="text-center py-4">
+            <div class="spinner-border text-primary" role="status">
+                <span class="sr-only">Loading versions...</span>
+            </div>
+        </div>
+
+        <div id="version-content" style="display: none;">
+            <!-- Version History Table -->
+            <div class="table-responsive">
+                <table class="table table-sm table-hover" id="version-history-table">
+                    <thead>
+                        <tr>
+                            <th>Version</th>
+                            <th>Changed By</th>
+                            <th>Date</th>
+                            <th>Changes</th>
+                            <th>Comment</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="version-history-body">
+                        <!-- Populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Version Actions -->
+            <div class="mt-3">
+                <button type="button" class="btn btn-sm btn-primary" id="compare-versions-btn">
+                    <i class="fas fa-code-branch"></i> Compare Versions
+                </button>
+                <button type="button" class="btn btn-sm btn-info" id="view-diff-btn" disabled>
+                    <i class="fas fa-file-alt"></i> View Diff
+                </button>
+            </div>
+        </div>
+
+        <div id="version-error" class="alert alert-danger" style="display: none;">
+            <strong>Error:</strong> <span id="version-error-message"></span>
+        </div>
+    </div>
+</div>
+
+<!-- Compare Versions Modal -->
+<div class="modal fade" id="compareVersionsModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">Compare Versions</h5>
+                <button type="button" class="close text-white" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="version1-select">Version 1 (older):</label>
+                            <select class="form-control" id="version1-select">
+                                <option value="">Select version...</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="version2-select">Version 2 (newer):</label>
+                            <select class="form-control" id="version2-select">
+                                <option value="">Select version...</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="comparison-loading" class="text-center py-4" style="display: none;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Loading comparison...</span>
+                    </div>
+                </div>
+
+                <div id="comparison-result" style="display: none;">
+                    <h6 class="mt-3">Changes:</h6>
+
+                    <!-- Added Fields -->
+                    <div id="added-fields" style="display: none;">
+                        <h6 class="text-success"><i class="fas fa-plus-circle"></i> Added Fields</h6>
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <pre id="added-fields-content" class="mb-0"></pre>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Modified Fields -->
+                    <div id="modified-fields" style="display: none;">
+                        <h6 class="text-warning mt-3"><i class="fas fa-edit"></i> Modified Fields</h6>
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <div id="modified-fields-content"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Removed Fields -->
+                    <div id="removed-fields" style="display: none;">
+                        <h6 class="text-danger mt-3"><i class="fas fa-minus-circle"></i> Removed Fields</h6>
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <pre id="removed-fields-content" class="mb-0"></pre>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- No Changes -->
+                    <div id="no-changes" style="display: none;">
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i> No differences found between these versions.
+                        </div>
+                    </div>
+
+                    <!-- Unified Diff -->
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-sm btn-secondary" id="toggle-unified-diff-btn">
+                            <i class="fas fa-code"></i> Show Unified Diff
+                        </button>
+                        <div id="unified-diff-container" style="display: none;" class="mt-2">
+                            <div class="card bg-dark text-white">
+                                <div class="card-body">
+                                    <pre id="unified-diff-content" class="mb-0 text-white" style="font-size: 12px;"></pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Restore Version Modal -->
+<div class="modal fade" id="restoreVersionModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title">Restore Version</h5>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Warning:</strong> This will restore the document to version <strong id="restore-version-number"></strong>.
+                    A new version will be created with the restored data.
+                </div>
+
+                <div class="form-group">
+                    <label for="restore-comment">Comment (optional):</label>
+                    <textarea class="form-control" id="restore-comment" rows="3"
+                              placeholder="Reason for restoration..."></textarea>
+                </div>
+
+                <div id="restore-loading" class="text-center" style="display: none;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Restoring...</span>
+                    </div>
+                </div>
+
+                <div id="restore-error" class="alert alert-danger" style="display: none;">
+                    <strong>Error:</strong> <span id="restore-error-message"></span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning" id="confirm-restore-btn">
+                    <i class="fas fa-undo"></i> Restore Version
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- View Version Modal -->
+<div class="modal fade" id="viewVersionModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">View Version <span id="view-version-number"></span></h5>
+                <button type="button" class="close text-white" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="view-version-loading" class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Loading version...</span>
+                    </div>
+                </div>
+
+                <div id="view-version-content" style="display: none;">
+                    <div class="mb-3">
+                        <strong>Changed By:</strong> <span id="view-changed-by"></span><br>
+                        <strong>Changed At:</strong> <span id="view-changed-at"></span><br>
+                        <strong>Comment:</strong> <span id="view-comment"></span>
+                    </div>
+
+                    <h6>Document Data:</h6>
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <pre id="view-version-data" class="mb-0" style="max-height: 400px; overflow-y: auto;"></pre>
+                        </div>
+                    </div>
+
+                    <h6 class="mt-3">Changes in This Version:</h6>
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <pre id="view-version-changes" class="mb-0"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    #version-history-table tbody tr.current-version {
+        background-color: #e3f2fd;
+        font-weight: bold;
+    }
+
+    .version-badge {
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 11px;
+        font-weight: bold;
+    }
+
+    .version-badge.current {
+        background-color: #28a745;
+        color: white;
+    }
+
+    .changes-badge {
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 11px;
+        margin-right: 4px;
+    }
+
+    .changes-badge.added {
+        background-color: #d4edda;
+        color: #155724;
+    }
+
+    .changes-badge.modified {
+        background-color: #fff3cd;
+        color: #856404;
+    }
+
+    .changes-badge.removed {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+
+    #unified-diff-content {
+        font-family: 'Courier New', monospace;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+</style>
+
+<script>
+(function() {
+    const currentDocumentId = {{ document.id }};
+    let versionHistory = [];
+    let selectedVersion1 = null;
+    let selectedVersion2 = null;
+    let versionToRestore = null;
+
+    // Load version history on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadVersionHistory();
+    });
+
+    function loadVersionHistory() {
+        fetch(`/api/doctypes/documents/${currentDocumentId}/versions/history/`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    versionHistory = data.history;
+                    displayVersionHistory(data.history, data.document);
+                    document.getElementById('version-loading').style.display = 'none';
+                    document.getElementById('version-content').style.display = 'block';
+                } else {
+                    showError(data.error || 'Failed to load version history');
+                }
+            })
+            .catch(error => {
+                console.error('Error loading version history:', error);
+                showError('Failed to load version history: ' + error.message);
+            });
+    }
+
+    function displayVersionHistory(history, documentInfo) {
+        const tbody = document.getElementById('version-history-body');
+        tbody.innerHTML = '';
+
+        // Update current version badge
+        document.getElementById('current-version-badge').textContent =
+            `Current: v${documentInfo.current_version}`;
+
+        // Populate version history table
+        history.forEach(version => {
+            const row = document.createElement('tr');
+            if (version.is_current) {
+                row.classList.add('current-version');
+            }
+
+            const versionBadge = version.is_current
+                ? '<span class="version-badge current">CURRENT</span>'
+                : '';
+
+            const changesSummary = formatChangesSummary(version.changes_summary);
+
+            row.innerHTML = `
+                <td>${version.version_number} ${versionBadge}</td>
+                <td>${version.changed_by || 'System'}</td>
+                <td>${formatDate(version.changed_at)}</td>
+                <td>${changesSummary}</td>
+                <td>${version.comment || '-'}</td>
+                <td>
+                    <button class="btn btn-sm btn-info" onclick="viewVersion(${version.version_number})" title="View">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    ${!version.is_current ? `
+                        <button class="btn btn-sm btn-warning" onclick="restoreVersion(${version.version_number})" title="Restore">
+                            <i class="fas fa-undo"></i>
+                        </button>
+                    ` : ''}
+                </td>
+            `;
+
+            tbody.appendChild(row);
+        });
+
+        // Populate version select dropdowns
+        populateVersionSelects(history);
+    }
+
+    function formatChangesSummary(summary) {
+        if (!summary || summary === 'No changes') {
+            return '<span class="text-muted">No changes</span>';
+        }
+
+        // Parse summary like "2 fields added, 3 fields modified"
+        let html = '';
+        if (summary.includes('added')) {
+            const match = summary.match(/(\d+) field[s]? added/);
+            if (match) {
+                html += `<span class="changes-badge added">+${match[1]}</span> `;
+            }
+        }
+        if (summary.includes('modified')) {
+            const match = summary.match(/(\d+) field[s]? modified/);
+            if (match) {
+                html += `<span class="changes-badge modified">~${match[1]}</span> `;
+            }
+        }
+        if (summary.includes('removed')) {
+            const match = summary.match(/(\d+) field[s]? removed/);
+            if (match) {
+                html += `<span class="changes-badge removed">-${match[1]}</span> `;
+            }
+        }
+
+        return html || summary;
+    }
+
+    function formatDate(isoString) {
+        const date = new Date(isoString);
+        return date.toLocaleString();
+    }
+
+    function populateVersionSelects(history) {
+        const select1 = document.getElementById('version1-select');
+        const select2 = document.getElementById('version2-select');
+
+        select1.innerHTML = '<option value="">Select version...</option>';
+        select2.innerHTML = '<option value="">Select version...</option>';
+
+        history.forEach(version => {
+            const option1 = new Option(
+                `Version ${version.version_number} - ${formatDate(version.changed_at)}`,
+                version.version_number
+            );
+            const option2 = option1.cloneNode(true);
+
+            select1.appendChild(option1);
+            select2.appendChild(option2);
+        });
+    }
+
+    // Compare Versions
+    document.getElementById('compare-versions-btn').addEventListener('click', function() {
+        $('#compareVersionsModal').modal('show');
+    });
+
+    document.getElementById('version1-select').addEventListener('change', function() {
+        selectedVersion1 = this.value;
+        checkAndCompare();
+    });
+
+    document.getElementById('version2-select').addEventListener('change', function() {
+        selectedVersion2 = this.value;
+        checkAndCompare();
+    });
+
+    function checkAndCompare() {
+        if (selectedVersion1 && selectedVersion2) {
+            compareVersions(selectedVersion1, selectedVersion2);
+        }
+    }
+
+    function compareVersions(v1, v2) {
+        document.getElementById('comparison-loading').style.display = 'block';
+        document.getElementById('comparison-result').style.display = 'none';
+
+        fetch(`/api/doctypes/documents/${currentDocumentId}/versions/compare/?v1=${v1}&v2=${v2}`)
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('comparison-loading').style.display = 'none';
+
+                if (data.success) {
+                    displayComparison(data.comparison);
+                } else {
+                    alert('Error comparing versions: ' + data.error);
+                }
+            })
+            .catch(error => {
+                document.getElementById('comparison-loading').style.display = 'none';
+                console.error('Error comparing versions:', error);
+                alert('Failed to compare versions: ' + error.message);
+            });
+    }
+
+    function displayComparison(comparison) {
+        document.getElementById('comparison-result').style.display = 'block';
+
+        const diff = comparison.diff;
+        const hasChanges = comparison.has_changes;
+
+        // Show/hide sections based on changes
+        if (Object.keys(diff.added).length > 0) {
+            document.getElementById('added-fields').style.display = 'block';
+            document.getElementById('added-fields-content').textContent =
+                JSON.stringify(diff.added, null, 2);
+        } else {
+            document.getElementById('added-fields').style.display = 'none';
+        }
+
+        if (Object.keys(diff.modified).length > 0) {
+            document.getElementById('modified-fields').style.display = 'block';
+            const modifiedHtml = Object.entries(diff.modified).map(([key, changes]) => {
+                return `
+                    <div class="mb-2">
+                        <strong>${key}:</strong><br>
+                        <span class="text-danger">- ${JSON.stringify(changes.old)}</span><br>
+                        <span class="text-success">+ ${JSON.stringify(changes.new)}</span>
+                    </div>
+                `;
+            }).join('');
+            document.getElementById('modified-fields-content').innerHTML = modifiedHtml;
+        } else {
+            document.getElementById('modified-fields').style.display = 'none';
+        }
+
+        if (Object.keys(diff.removed).length > 0) {
+            document.getElementById('removed-fields').style.display = 'block';
+            document.getElementById('removed-fields-content').textContent =
+                JSON.stringify(diff.removed, null, 2);
+        } else {
+            document.getElementById('removed-fields').style.display = 'none';
+        }
+
+        if (!hasChanges) {
+            document.getElementById('no-changes').style.display = 'block';
+        } else {
+            document.getElementById('no-changes').style.display = 'none';
+        }
+    }
+
+    // Toggle Unified Diff
+    document.getElementById('toggle-unified-diff-btn').addEventListener('click', function() {
+        const container = document.getElementById('unified-diff-container');
+
+        if (container.style.display === 'none') {
+            // Load and show unified diff
+            const v1 = selectedVersion1;
+            const v2 = selectedVersion2;
+
+            fetch(`/api/doctypes/documents/${currentDocumentId}/versions/compare/?v1=${v1}&v2=${v2}&format=text`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('unified-diff-content').textContent = data.diff_text;
+                        container.style.display = 'block';
+                        this.innerHTML = '<i class="fas fa-code"></i> Hide Unified Diff';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading unified diff:', error);
+                });
+        } else {
+            container.style.display = 'none';
+            this.innerHTML = '<i class="fas fa-code"></i> Show Unified Diff';
+        }
+    });
+
+    // View Version
+    window.viewVersion = function(versionNumber) {
+        document.getElementById('view-version-number').textContent = versionNumber;
+        document.getElementById('view-version-loading').style.display = 'block';
+        document.getElementById('view-version-content').style.display = 'none';
+
+        $('#viewVersionModal').modal('show');
+
+        fetch(`/api/doctypes/documents/${currentDocumentId}/versions/${versionNumber}/`)
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('view-version-loading').style.display = 'none';
+
+                if (data.success) {
+                    const version = data.version;
+                    document.getElementById('view-changed-by').textContent = version.changed_by || 'System';
+                    document.getElementById('view-changed-at').textContent = formatDate(version.changed_at);
+                    document.getElementById('view-comment').textContent = version.comment || '-';
+                    document.getElementById('view-version-data').textContent =
+                        JSON.stringify(version.data_snapshot, null, 2);
+                    document.getElementById('view-version-changes').textContent =
+                        JSON.stringify(version.changes, null, 2);
+
+                    document.getElementById('view-version-content').style.display = 'block';
+                } else {
+                    alert('Error loading version: ' + data.error);
+                }
+            })
+            .catch(error => {
+                document.getElementById('view-version-loading').style.display = 'none';
+                console.error('Error loading version:', error);
+                alert('Failed to load version: ' + error.message);
+            });
+    };
+
+    // Restore Version
+    window.restoreVersion = function(versionNumber) {
+        versionToRestore = versionNumber;
+        document.getElementById('restore-version-number').textContent = versionNumber;
+        document.getElementById('restore-comment').value = '';
+        document.getElementById('restore-error').style.display = 'none';
+        $('#restoreVersionModal').modal('show');
+    };
+
+    document.getElementById('confirm-restore-btn').addEventListener('click', function() {
+        const comment = document.getElementById('restore-comment').value;
+
+        document.getElementById('restore-loading').style.display = 'block';
+        document.getElementById('restore-error').style.display = 'none';
+
+        fetch(`/api/doctypes/documents/${currentDocumentId}/versions/${versionToRestore}/restore/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ comment: comment || '' })
+        })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('restore-loading').style.display = 'none';
+
+                if (data.success) {
+                    $('#restoreVersionModal').modal('hide');
+                    alert('Version restored successfully! Reloading page...');
+                    location.reload();
+                } else {
+                    document.getElementById('restore-error-message').textContent = data.error;
+                    document.getElementById('restore-error').style.display = 'block';
+                }
+            })
+            .catch(error => {
+                document.getElementById('restore-loading').style.display = 'none';
+                document.getElementById('restore-error-message').textContent = error.message;
+                document.getElementById('restore-error').style.display = 'block';
+                console.error('Error restoring version:', error);
+            });
+    });
+
+    function showError(message) {
+        document.getElementById('version-loading').style.display = 'none';
+        document.getElementById('version-error-message').textContent = message;
+        document.getElementById('version-error').style.display = 'block';
+    }
+})();
+</script>

@@ -1,0 +1,18 @@
+WORKFLOW STATE CHANGED
+{{ doctype_name }}
+==================================================
+
+State Transition:
+{{ from_state }} → {{ to_state }}
+
+Document: {{ doctype_name }} #{{ document.id }}
+Changed by: {{ changed_by }}
+{% if comment %}
+Comment: "{{ comment }}"
+{% endif %}
+
+View Document: {{ document_url }}
+
+==================================================
+This is an automated notification from Doctype Engine.
+You received this email because you are associated with this document.

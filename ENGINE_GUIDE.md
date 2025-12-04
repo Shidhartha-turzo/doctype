@@ -2,7 +2,7 @@
 
 **A Modern, Innovative Doctype Engine inspired by Frappe but with Next-Generation Features**
 
-## 🚀 Overview
+##  Overview
 
 The Doctype Engine is a comprehensive framework for building dynamic data-driven applications. Like Frappe's doctype system but modernized with:
 - Module-based organization
@@ -36,7 +36,7 @@ Module (e.g., CRM)
 
 ---
 
-## 🏗️ Core Components
+##  Core Components
 
 ### 1. **Modules**
 Organize doctypes into logical groups.
@@ -410,7 +410,7 @@ Connect doctypes together.
 
 ---
 
-## 💡 Computed Fields
+##  Computed Fields
 
 Dynamic calculations using formulas.
 
@@ -508,7 +508,7 @@ Computed: total_amount = sum(items.amount)
 
 ---
 
-## 🚀 Innovations vs Frappe
+##  Innovations vs Frappe
 
 | Feature | Frappe | Our Engine |
 |---------|--------|------------|
@@ -539,4 +539,4 @@ The engine is running at **http://localhost:8000/admin/**
 
 Login: `spoofman` / `admin123`
 
-Happy Building! 🎉
+Happy Building! [SUCCESS]

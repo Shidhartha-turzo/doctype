@@ -1,8 +1,9 @@
 from rest_framework import serializers
-from django.contrib.auth.models import User
-from django.contrib.auth import authenticate
+from django.contrib.auth import authenticate, get_user_model
 from .models import MagicLink, UserSession
 from rest_framework_simplejwt.tokens import RefreshToken
+
+User = get_user_model()
 
 
 class MagicLinkRequestSerializer(serializers.Serializer):
@@ -45,9 +46,9 @@ class TokenSerializer(serializers.Serializer):
 
     def get_user(self, obj):
         return {
-            'id': obj['user'].id,
-            'username': obj['user'].username,
             'email': obj['user'].email,
+            'username': obj['user'].username,
+            'full_name': getattr(obj['user'], 'full_name', ''),
         }
 
 
