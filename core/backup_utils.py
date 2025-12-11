@@ -3,6 +3,8 @@ Database Backup Utilities
 
 Provides comprehensive backup and restore functionality for critical situations.
 Supports automatic backups, manual backups, and restoration.
+
+Zero Trust: All backups are encrypted by default (data-at-rest encryption)
 """
 
 import os
@@ -18,6 +20,14 @@ from django.db import connection
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Import encryption utilities
+try:
+    from core.encryption import BackupEncryption
+    ENCRYPTION_AVAILABLE = True
+except ImportError:
+    logger.warning("Encryption module not available - backups will not be encrypted!")
+    ENCRYPTION_AVAILABLE = False
 
 
 class BackupManager:
@@ -46,6 +56,7 @@ class BackupManager:
         name: Optional[str] = None,
         description: str = '',
         compress: bool = True,
+        encrypt: bool = True,
         tags: Optional[List[str]] = None
     ) -> Dict[str, str]:
         """
@@ -55,6 +66,7 @@ class BackupManager:
             name: Custom backup name (defaults to timestamp)
             description: Description of this backup
             compress: Whether to compress the backup
+            encrypt: Whether to encrypt the backup (default: True for Zero Trust)
             tags: List of tags (e.g., ['migration', 'production'])
 
         Returns:
@@ -96,8 +108,39 @@ class BackupManager:
                 with open(backup_path, 'w') as f:
                     call_command('dumpdata', stdout=f, indent=2)
 
-            # Get file size
+            # Get file size before encryption
             file_size = backup_path.stat().st_size
+
+            # Encrypt the backup if requested (Zero Trust: encrypt by default)
+            encrypted = False
+            encryption_metadata = {}
+            if encrypt and ENCRYPTION_AVAILABLE:
+                try:
+                    logger.info(f'Encrypting backup: {backup_filename}')
+                    encrypted_path = self.backup_dir / f'{backup_filename}.encrypted'
+
+                    encryptor = BackupEncryption()
+                    encryption_metadata = encryptor.encrypt_file(
+                        str(backup_path),
+                        str(encrypted_path)
+                    )
+
+                    # Remove unencrypted backup
+                    backup_path.unlink()
+
+                    # Use encrypted backup as the main backup
+                    backup_path = encrypted_path
+                    backup_filename = f'{backup_filename}.encrypted'
+                    encrypted = True
+
+                    logger.info(f'Backup encrypted successfully')
+                except Exception as e:
+                    logger.error(f'Backup encryption failed: {str(e)}')
+                    # Continue with unencrypted backup if encryption fails
+                    encrypted = False
+
+            # Get final file size
+            final_size = backup_path.stat().st_size
 
             # Create metadata
             metadata = {
@@ -108,12 +151,18 @@ class BackupManager:
                 'name': clean_name,
                 'description': description,
                 'compressed': compress,
-                'size_bytes': file_size,
-                'size_mb': round(file_size / (1024 * 1024), 2),
+                'encrypted': encrypted,
+                'size_bytes': final_size,
+                'size_mb': round(final_size / (1024 * 1024), 2),
+                'original_size_bytes': file_size,
                 'tags': tags or [],
                 'database': str(connection.settings_dict['NAME']),
                 'django_version': settings.DJANGO_VERSION if hasattr(settings, 'DJANGO_VERSION') else 'unknown'
             }
+
+            # Add encryption metadata if encrypted
+            if encrypted:
+                metadata['encryption'] = encryption_metadata
 
             # Save metadata
             self._save_backup_metadata(metadata)

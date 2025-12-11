@@ -262,3 +262,115 @@ EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
 EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@example.com')
+
+# ==============================================================================
+# ENCRYPTION CONFIGURATION (Zero Trust - Data at Rest & In Transit)
+# ==============================================================================
+
+# Encryption Keys (MUST be set via environment variables in production)
+FIELD_ENCRYPTION_KEY = config(
+    'FIELD_ENCRYPTION_KEY',
+    default=None  # Will be generated if not set
+)
+
+BACKUP_ENCRYPTION_KEY = config(
+    'BACKUP_ENCRYPTION_KEY',
+    default=None  # Will be generated if not set
+)
+
+# Data-in-Transit Encryption (HTTPS/TLS)
+# These settings enforce encryption for all data transmitted
+if not DEBUG or config('FORCE_HTTPS', default=False, cast=bool):
+    # Force HTTPS for all requests
+    SECURE_SSL_REDIRECT = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+   
+    # HTTP Strict Transport Security (HSTS)
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+   
+    # Secure Cookies
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_HTTPONLY = True
+    CSRF_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    CSRF_COOKIE_SAMESITE = 'Lax'
+   
+    # Security Headers
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
+    SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+
+# Database SSL/TLS Configuration
+# Update database options to require SSL
+if 'OPTIONS' not in DATABASES['default']:
+    DATABASES['default']['OPTIONS'] = {}
+
+# For production, require SSL
+if not DEBUG:
+    DATABASES['default']['OPTIONS']['sslmode'] = 'require'
+else:
+    # Development: prefer SSL if available
+    DATABASES['default']['OPTIONS']['sslmode'] = 'prefer'
+
+# Email TLS (for data-in-transit encryption)
+EMAIL_USE_TLS = True
+EMAIL_USE_SSL = False  # Use TLS not SSL
+
+# File Upload Security & Encryption
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
+
+# Allowed file extensions (whitelist approach)
+ALLOWED_UPLOAD_EXTENSIONS = [
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx',
+    '.jpg', '.jpeg', '.png', '.gif',
+    '.txt', '.csv', '.zip'
+]
+
+# Encryption Configuration
+ENCRYPTION_SETTINGS = {
+    'ALGORITHM': 'AES-256-GCM',
+    'KEY_DERIVATION': 'PBKDF2',
+    'ITERATIONS': 100000,
+    'SALT_LENGTH': 32,
+    'BACKUP_ENCRYPTION_ENABLED': True,
+    'FIELD_ENCRYPTION_ENABLED': True,
+}
+
+# Logging encryption key access (for audit)
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'encryption_file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'encryption.log',
+            'maxBytes': 1024 * 1024 * 50,  # 50MB
+            'backupCount': 10,
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'encryption': {
+            'handlers': ['encryption_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
+
+# Create logs directory if it doesn't exist
+import os
+os.makedirs(BASE_DIR / 'logs', exist_ok=True)
+
