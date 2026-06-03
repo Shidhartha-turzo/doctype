@@ -404,19 +404,22 @@ These features are commonly expected but not yet built:
 **Impact**: **LOW-MEDIUM** - Nice for task management
 
 ### 9. Import/Export
-**Status**: Partially implemented
+**Status**: Implemented (CSV import/export with validation + error reporting)
 
 **What Exists**:
 - [YES] API for data access
 - [YES] Admin export
+- [YES] CSV export — `GET /<doctype>/export/` (export permission)
+- [YES] CSV import — `POST /<doctype>/import/` (import permission), creates via the
+  HookService + workflow pipeline so imported rows behave like normal documents
+- [YES] Validation on import (per-field type conversion + required checks)
+- [YES] Import error reporting (per-row {row, errors}; partial import — good rows commit)
+- [YES] Template download — `GET /<doctype>/import-template/`
+- [YES] Column mapping by schema field name (round-trips with export)
 
 **What's Missing**:
-- [NO] Excel import wizard
-- [NO] CSV import/export UI
-- [NO] Data mapping interface
-- [NO] Validation on import
-- [NO] Import error reporting
-- [NO] Template download
+- [NO] Excel (.xlsx) import/export — CSV only (no new dependency)
+- [NO] Interactive column-mapping UI (mapping is by header name)
 
 **Impact**: **HIGH** - Critical for data migration
 
@@ -480,7 +483,7 @@ These features are commonly expected but not yet built:
 ### Priority 2 (Important) - Near-term enhancements
 1. ~~**Reports System**~~ - DONE: query/python/SQL engine with JSON + CSV export
 2. ~~**Print Templates**~~ - DONE: HTML print engine + optional PDF (xhtml2pdf)
-3. **Import/Export UI** - Data migration support
+3. ~~**Import/Export**~~ - DONE: CSV import/export with validation, error reporting, and template
 4. **Many-to-Many UI** - Tagging and categorization
 5. **Advanced Search** - Usability with scale
 
@@ -588,16 +591,14 @@ Make it easy to connect with external systems:
 - ALLOWED_HOSTS (for deployment)
 
 ### What's Partially Complete [PARTIAL]
-- Reports (models exist, no engine)
-- Permissions (models exist, no enforcement)
 - Naming series (basic only, no advanced features)
-- Hooks (models exist, no execution)
+- Custom fields (model exists, no runtime injection)
+- Document versioning (model exists, no auto-version/diff)
 
 ### What's Missing [NO]
 - Child tables UI
 - Dashboard
 - Advanced search
-- Import/export UI
 - Notifications
 
 ---
@@ -656,7 +657,7 @@ Looking at the relationship requirements you specified:
 - [NO] Real-time notifications
 - [NO] Advanced search
 - [NO] Bulk operations
-- [NO] Import/export UI
+- [YES] Import/export (CSV, with validation + error reporting)
 - [NO] Mobile app/PWA
 
 ---
@@ -678,7 +679,6 @@ Looking at the relationship requirements you specified:
 - **Many-to-many links**: Backend ready, UI missing
 
 ### [MISSING] What's Missing:
-- **Import/export UI**: Data migration
 - **Dashboard**: UX enhancement
 - **Notifications**: Collaboration feature
 

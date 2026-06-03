@@ -32,6 +32,12 @@ urlpatterns = [
     # Print API
     path('documents/<int:document_id>/print/', views.print_document, name='print_document'),
 
+    # Import / Export API (slug-scoped; literal second segment, so they are not
+    # shadowed by the single-segment document_list catch-all below)
+    path('<slug:doctype_slug>/export/', views.doctype_export, name='doctype_export'),
+    path('<slug:doctype_slug>/import/', views.doctype_import, name='doctype_import'),
+    path('<slug:doctype_slug>/import-template/', views.doctype_import_template, name='doctype_import_template'),
+
     # Dynamic Form Views
     path('<slug:doctype_slug>/', views.document_list, name='document_list'),
     path('<slug:doctype_slug>/create/', views.document_create, name='document_create'),

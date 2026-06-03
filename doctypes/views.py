@@ -20,6 +20,7 @@ from .workflow_engine import WorkflowService, WorkflowError
 from .hook_engine import HookService, HookError
 from .report_engine import ReportService, ReportError, ReportPermissionError
 from .print_engine import PrintService, PrintError
+from . import import_export
 from .permissions import has_doctype_permission, get_field_restrictions
 import logging
 import json
@@ -531,6 +532,60 @@ def print_document(request, document_id):
         return HttpResponse(html, content_type='text/html')
     except PrintError as e:
         return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ============================================================================
+# Import / Export API
+# ============================================================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def doctype_export(request, doctype_slug):
+    """Export all of a doctype's documents as a CSV download."""
+    doctype = get_object_or_404(Doctype, slug=doctype_slug, is_active=True)
+    if not has_doctype_permission(request.user, doctype, 'export'):
+        return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+    from django.http import HttpResponse
+    response = HttpResponse(import_export.export_csv(doctype), content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{doctype.slug}.csv"'
+    return response
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def doctype_import_template(request, doctype_slug):
+    """Download an empty CSV template (header row) for importing."""
+    doctype = get_object_or_404(Doctype, slug=doctype_slug, is_active=True)
+    if not has_doctype_permission(request.user, doctype, 'export'):
+        return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+    from django.http import HttpResponse
+    response = HttpResponse(import_export.import_template(doctype), content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{doctype.slug}_template.csv"'
+    return response
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def doctype_import(request, doctype_slug):
+    """Import documents from an uploaded CSV file (multipart field 'file')."""
+    doctype = get_object_or_404(Doctype, slug=doctype_slug, is_active=True)
+    if not has_doctype_permission(request.user, doctype, 'import'):
+        return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    upload = request.FILES.get('file')
+    if not upload:
+        return Response(
+            {'detail': "No file provided (use multipart field 'file')."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        result = import_export.import_csv(doctype, upload, request.user)
+    except import_export.ImportExportError as e:
+        return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    # 207-ish semantics: created some, maybe with row errors.
+    http_status = status.HTTP_201_CREATED if result['created'] else status.HTTP_400_BAD_REQUEST
+    return Response(result, status=http_status)
 
 
 # ============================================================================
