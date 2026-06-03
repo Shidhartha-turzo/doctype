@@ -6,13 +6,21 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404, render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.core.exceptions import PermissionDenied
 from django.views.decorators.http import require_http_methods
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from .models import Doctype, Document, DocumentShare
 from .serializers import (
     DoctypeSerializer, DoctypeListSerializer, DynamicDocumentSerializer,
-    DocumentShareSerializer, BulkShareSerializer
+    DocumentShareSerializer, BulkShareSerializer,
+    DocumentWorkflowStateSerializer, PerformTransitionSerializer,
+    WorkflowTransitionLogSerializer,
 )
+from .workflow_engine import WorkflowService, WorkflowError
+from .hook_engine import HookService, HookError
+from .report_engine import ReportService, ReportError, ReportPermissionError
+from .permissions import has_doctype_permission, get_field_restrictions
+import logging
 import json
 from decimal import Decimal
 from datetime import datetime
@@ -90,6 +98,13 @@ class DoctypeViewSet(viewsets.ModelViewSet):
         """List or create documents for this doctype"""
         doctype = self.get_object()
 
+        action = 'create' if request.method == 'POST' else 'read'
+        if not has_doctype_permission(request.user, doctype, action):
+            return Response(
+                {'detail': f"You do not have '{action}' permission on this doctype."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         if request.method == 'GET':
             documents = Document.objects.filter(doctype=doctype)
 
@@ -113,7 +128,16 @@ class DoctypeViewSet(viewsets.ModelViewSet):
                 context={'request': request}
             )
             if serializer.is_valid():
-                document = serializer.save()
+                try:
+                    document = serializer.save()
+                except HookError as e:
+                    return Response(
+                        {'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST
+                    )
+                try:
+                    WorkflowService.initialize_workflow(document, user=request.user)
+                except WorkflowError as e:
+                    logging.getLogger(__name__).warning(f'Workflow init failed: {e}')
                 return Response(
                     DynamicDocumentSerializer(document, doctype=doctype).data,
                     status=status.HTTP_201_CREATED
@@ -127,6 +151,11 @@ class DoctypeViewSet(viewsets.ModelViewSet):
 def get_doctype_schema(request, slug):
     """Get the schema for a specific doctype"""
     doctype = get_object_or_404(Doctype, slug=slug, is_active=True)
+    if not has_doctype_permission(request.user, doctype, 'read'):
+        return Response(
+            {'detail': "You do not have 'read' permission on this doctype."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
     return Response({
         'name': doctype.name,
         'slug': doctype.slug,
@@ -148,6 +177,11 @@ def get_doctype_schema(request, slug):
 def search_documents(request, slug):
     """Search documents within a doctype"""
     doctype = get_object_or_404(Doctype, slug=slug, is_active=True)
+    if not has_doctype_permission(request.user, doctype, 'read'):
+        return Response(
+            {'detail': "You do not have 'read' permission on this doctype."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
     query = request.query_params.get('q', '')
 
     if not query:
@@ -208,6 +242,12 @@ def share_document(request, document_id):
 
     # Get document
     document = get_object_or_404(Document, id=document_id)
+
+    if not has_doctype_permission(request.user, document.doctype, 'read'):
+        return Response(
+            {'error': "You do not have 'read' permission on this doctype."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
 
     # Check if email is enabled
     system_settings = SystemSettings.get_settings()
@@ -299,14 +339,103 @@ def share_document(request, document_id):
 
 
 # ============================================================================
+# Reports API
+# ============================================================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def report_list(request):
+    """List the reports the current user is allowed to run."""
+    reports = ReportService.list_for_user(request.user)
+    return Response([
+        {
+            'id': r.id,
+            'name': r.name,
+            'doctype': r.doctype.slug,
+            'report_type': r.report_type,
+            'description': r.description,
+        }
+        for r in reports
+    ])
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def report_run(request, report_id):
+    """
+    Run a report and return its result as JSON, or as CSV with ?format=csv.
+
+    Runtime filters may be passed via a JSON-encoded ?filters= parameter,
+    e.g. filters=[{"field":"status","op":"eq","value":"open"}].
+    """
+    from .engine_models import Report
+
+    report = get_object_or_404(Report, id=report_id)
+
+    runtime_filters = []
+    raw_filters = request.query_params.get('filters')
+    if raw_filters:
+        try:
+            runtime_filters = json.loads(raw_filters)
+        except json.JSONDecodeError:
+            return Response(
+                {'detail': "'filters' must be valid JSON."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not isinstance(runtime_filters, list):
+            return Response(
+                {'detail': "'filters' must be a JSON list."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    try:
+        result = ReportService.run(report, request.user, runtime_filters=runtime_filters)
+    except ReportPermissionError as e:
+        return Response({'detail': str(e)}, status=status.HTTP_403_FORBIDDEN)
+    except ReportError as e:
+        return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    if request.query_params.get('format') == 'csv':
+        from django.http import HttpResponse
+        response = HttpResponse(ReportService.to_csv(result), content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="{report.name}.csv"'
+        return response
+
+    return Response(result)
+
+
+# ============================================================================
 # Dynamic Form Views for Document Management
 # ============================================================================
+
+def _require_doctype_perm(request, doctype, action, document=None):
+    """Raise PermissionDenied (403) if the user lacks the action on the doctype."""
+    if not has_doctype_permission(request.user, doctype, action, document=document):
+        raise PermissionDenied(
+            f"You do not have '{action}' permission on {doctype.name}."
+        )
+
 
 @login_required
 def document_list(request, doctype_slug):
     """List all documents for a doctype with dynamic table"""
+    from .engine_models import DocumentWorkflowState
+
     doctype = get_object_or_404(Doctype, slug=doctype_slug, is_active=True)
+    _require_doctype_perm(request, doctype, 'read')
     documents = Document.objects.filter(doctype=doctype).order_by('-created_at')
+
+    # Check if this doctype has an active workflow
+    has_workflow = WorkflowService.get_active_workflow(doctype) is not None
+
+    if has_workflow:
+        from django.db.models import Prefetch
+        documents = documents.prefetch_related(
+            Prefetch(
+                'workflow_state',
+                queryset=DocumentWorkflowState.objects.select_related('current_state'),
+            )
+        )
 
     # Get schema fields
     fields = doctype.schema.get('fields', [])
@@ -316,6 +445,7 @@ def document_list(request, doctype_slug):
         'documents': documents,
         'fields': fields,
         'field_names': [f['name'] for f in fields],
+        'has_workflow': has_workflow,
     }
 
     return render(request, 'doctypes/document_list.html', context)
@@ -327,7 +457,17 @@ def document_create(request, doctype_slug):
     from .models import DocumentLink
 
     doctype = get_object_or_404(Doctype, slug=doctype_slug, is_active=True)
+    _require_doctype_perm(request, doctype, 'create')
+
     fields = doctype.schema.get('fields', [])
+    hidden_fields, readonly_fields = get_field_restrictions(request.user, doctype)
+    # Drop hidden fields entirely; flag read-only fields so the template
+    # disables them. Work on copies so the persisted schema is untouched.
+    fields = [
+        {**f, 'readonly': True} if f['name'] in readonly_fields else f
+        for f in fields
+        if f['name'] not in hidden_fields
+    ]
 
     # Get available documents for link fields
     link_field_options = {}
@@ -353,6 +493,9 @@ def document_create(request, doctype_slug):
         for field in fields:
             field_name = field['name']
             field_type = field['type']
+            # Never accept values for read-only fields, even if posted.
+            if field_name in readonly_fields:
+                continue
             field_value = request.POST.get(field_name, '').strip()
 
             # Check required fields
@@ -392,13 +535,27 @@ def document_create(request, doctype_slug):
             # Generate document name
             name = data.get('name') or data.get(fields[0]['name']) if fields else 'NEW'
 
-            # Create document
-            document = Document.objects.create(
+            # Create document (firing before/after insert + save hooks)
+            document = Document(
                 doctype=doctype,
                 name=str(name),
                 data=data,
                 created_by=request.user
             )
+            try:
+                HookService.save_with_hooks(document, user=request.user, is_new=True)
+            except HookError as e:
+                messages.error(request, f'Document not created: {e}')
+                return render(request, 'doctypes/document_form.html', {
+                    'doctype': doctype, 'fields': fields, 'action': 'Create',
+                    'submit_url': request.path, 'link_field_options': link_field_options,
+                })
+
+            # Initialize workflow if doctype has one
+            try:
+                WorkflowService.initialize_workflow(document, user=request.user)
+            except WorkflowError as e:
+                messages.warning(request, f'Workflow could not be initialized: {e}')
 
             # Create DocumentLink entries for link fields
             for field_name, doc_id in link_fields_data.items():
@@ -437,7 +594,22 @@ def document_edit(request, doctype_slug, document_id):
 
     doctype = get_object_or_404(Doctype, slug=doctype_slug, is_active=True)
     document = get_object_or_404(Document, id=document_id, doctype=doctype)
+
+    # Reading the form requires 'read'; saving requires 'write'.
+    _require_doctype_perm(request, doctype, 'read', document=document)
+    if request.method == 'POST':
+        _require_doctype_perm(request, doctype, 'write', document=document)
+
     fields = doctype.schema.get('fields', [])
+    hidden_fields, readonly_fields = get_field_restrictions(request.user, doctype)
+    fields = [
+        {**f, 'readonly': True} if f['name'] in readonly_fields else f
+        for f in fields
+        if f['name'] not in hidden_fields
+    ]
+
+    # Check workflow editability
+    can_edit, edit_reason = WorkflowService.can_edit_document(document)
 
     # Get available documents for link fields
     link_field_options = {}
@@ -454,15 +626,23 @@ def document_edit(request, doctype_slug, document_id):
                 except Doctype.DoesNotExist:
                     link_field_options[field['name']] = []
 
+    if request.method == 'POST' and not can_edit:
+        messages.error(request, edit_reason)
+        return redirect('document_edit', doctype_slug=doctype_slug, document_id=document_id)
+
     if request.method == 'POST':
-        # Collect and validate form data
-        data = {}
+        # Start from existing data so hidden/read-only fields (and any keys not
+        # in the schema) are preserved rather than wiped on save.
+        data = dict(document.data or {})
         errors = {}
         link_fields_data = {}  # Store link field values separately
 
         for field in fields:
             field_name = field['name']
             field_type = field['type']
+            # Never accept values for read-only fields, even if posted.
+            if field_name in readonly_fields:
+                continue
             field_value = request.POST.get(field_name, '').strip()
 
             # Check required fields
@@ -470,8 +650,9 @@ def document_edit(request, doctype_slug, document_id):
                 errors[field_name] = f"{field.get('label', field_name)} is required"
                 continue
 
-            # Skip empty optional fields
+            # Clear emptied optional fields
             if not field_value:
+                data.pop(field_name, None)
                 continue
 
             # Type conversion and validation
@@ -499,10 +680,14 @@ def document_edit(request, doctype_slug, document_id):
                 errors[field_name] = f"Invalid {field_type} value"
 
         if not errors:
-            # Update document
+            # Update document (firing before/after save hooks)
             document.data = data
             document.modified_by = request.user  # Track who modified the document
-            document.save()
+            try:
+                HookService.save_with_hooks(document, user=request.user, is_new=False)
+            except HookError as e:
+                messages.error(request, f'Document not saved: {e}')
+                return redirect('document_edit', doctype_slug=doctype_slug, document_id=document_id)
 
             # Update DocumentLink entries for link fields
             # First, remove old links
@@ -528,6 +713,11 @@ def document_edit(request, doctype_slug, document_id):
             for field_name, error in errors.items():
                 messages.error(request, error)
 
+    # Workflow context
+    workflow_state = WorkflowService.get_document_workflow_state(document)
+    available_transitions = WorkflowService.get_available_transitions(document, request.user) if workflow_state else []
+    transition_history = WorkflowService.get_transition_history(document) if workflow_state else []
+
     context = {
         'doctype': doctype,
         'document': document,
@@ -535,9 +725,41 @@ def document_edit(request, doctype_slug, document_id):
         'action': 'Edit',
         'submit_url': request.path,
         'link_field_options': link_field_options,
+        'can_edit': can_edit,
+        'edit_reason': edit_reason,
+        'workflow_state': workflow_state,
+        'available_transitions': available_transitions,
+        'transition_history': transition_history,
     }
 
     return render(request, 'doctypes/document_form.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def document_transition(request, doctype_slug, document_id):
+    """Perform a workflow transition from the HTML UI."""
+    doctype = get_object_or_404(Doctype, slug=doctype_slug, is_active=True)
+    document = get_object_or_404(Document, id=document_id, doctype=doctype)
+    # Read to reach the document; the workflow's own role checks authorize
+    # the actual transition inside WorkflowService.perform_transition.
+    _require_doctype_perm(request, doctype, 'read', document=document)
+
+    transition_id = request.POST.get('transition_id')
+    comment = request.POST.get('comment', '')
+
+    try:
+        WorkflowService.perform_transition(
+            document=document,
+            transition_id=int(transition_id),
+            user=request.user,
+            comment=comment,
+        )
+        messages.success(request, 'Workflow transition completed successfully.')
+    except (WorkflowError, ValueError, TypeError) as e:
+        messages.error(request, str(e))
+
+    return redirect('document_edit', doctype_slug=doctype_slug, document_id=document_id)
 
 
 @login_required
@@ -546,9 +768,106 @@ def document_delete(request, doctype_slug, document_id):
     """Delete a document"""
     doctype = get_object_or_404(Doctype, slug=doctype_slug, is_active=True)
     document = get_object_or_404(Document, id=document_id, doctype=doctype)
+    _require_doctype_perm(request, doctype, 'delete', document=document)
+
+    # Check workflow editability
+    can_edit, edit_reason = WorkflowService.can_edit_document(document)
+    if not can_edit:
+        messages.error(request, f'Cannot delete: {edit_reason}')
+        return redirect('document_list', doctype_slug=doctype_slug)
 
     document_name = document.name
-    document.delete()
+    try:
+        HookService.delete_with_hooks(document, user=request.user)
+    except HookError as e:
+        messages.error(request, f'Document not deleted: {e}')
+        return redirect('document_list', doctype_slug=doctype_slug)
 
     messages.success(request, f'{doctype.name} "{document_name}" deleted successfully!')
     return redirect('document_list', doctype_slug=doctype_slug)
+
+
+# --- Workflow API Endpoints ---
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def document_workflow_state(request, document_id):
+    """Get the current workflow state and available transitions for a document."""
+    document = get_object_or_404(Document, id=document_id)
+    if not has_doctype_permission(request.user, document.doctype, 'read'):
+        return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+    dws = WorkflowService.get_document_workflow_state(document)
+    if not dws:
+        return Response(
+            {'detail': 'No workflow active for this document.'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    serializer = DocumentWorkflowStateSerializer(dws, context={'request': request})
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def document_perform_transition(request, document_id):
+    """Perform a workflow transition on a document."""
+    document = get_object_or_404(Document, id=document_id)
+    # Reaching the document requires read; the transition itself is authorized
+    # by the workflow's own role checks in WorkflowService.perform_transition.
+    if not has_doctype_permission(request.user, document.doctype, 'read'):
+        return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+    serializer = PerformTransitionSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    try:
+        dws = WorkflowService.perform_transition(
+            document=document,
+            transition_id=serializer.validated_data['transition_id'],
+            user=request.user,
+            comment=serializer.validated_data.get('comment', ''),
+        )
+    except WorkflowError as e:
+        return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    return Response(
+        DocumentWorkflowStateSerializer(dws, context={'request': request}).data
+    )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def document_workflow_history(request, document_id):
+    """Get the workflow transition history for a document."""
+    document = get_object_or_404(Document, id=document_id)
+    if not has_doctype_permission(request.user, document.doctype, 'read'):
+        return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+    logs = WorkflowService.get_transition_history(document)
+    serializer = WorkflowTransitionLogSerializer(logs, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def document_submit(request, document_id):
+    """Submit a document (docstatus 0 -> 1)."""
+    document = get_object_or_404(Document, id=document_id)
+    if not has_doctype_permission(request.user, document.doctype, 'submit'):
+        return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        document = WorkflowService.submit_document(document, request.user)
+    except (WorkflowError, HookError) as e:
+        return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    return Response({'detail': 'Document submitted.', 'docstatus': document.docstatus})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def document_cancel(request, document_id):
+    """Cancel a submitted document (docstatus 1 -> 2)."""
+    document = get_object_or_404(Document, id=document_id)
+    if not has_doctype_permission(request.user, document.doctype, 'cancel'):
+        return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        document = WorkflowService.cancel_document(document, request.user)
+    except WorkflowError as e:
+        return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    return Response({'detail': 'Document cancelled.', 'docstatus': document.docstatus})

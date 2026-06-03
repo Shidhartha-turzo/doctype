@@ -8,7 +8,7 @@ import json
 from .models import Doctype, Document, Module, DocumentShare, DocumentLink, DocumentLinkMultiple
 from .engine_models import (
     DoctypePermission, DocumentVersion, Workflow, WorkflowState, WorkflowTransition,
-    DocumentWorkflowState, NamingSeries, DoctypeHook, CustomField, Report
+    DocumentWorkflowState, WorkflowTransitionLog, NamingSeries, DoctypeHook, CustomField, Report
 )
 
 
@@ -265,6 +265,17 @@ class WorkflowTransitionAdmin(admin.ModelAdmin):
 class DocumentWorkflowStateAdmin(admin.ModelAdmin):
     list_display = ['document', 'workflow', 'current_state', 'state_changed_at', 'state_changed_by']
     list_filter = ['workflow', 'current_state']
+
+
+@admin.register(WorkflowTransitionLog)
+class WorkflowTransitionLogAdmin(admin.ModelAdmin):
+    list_display = ['document', 'from_state', 'to_state', 'performed_by', 'performed_at']
+    list_filter = ['workflow', 'performed_at']
+    readonly_fields = [
+        'document', 'workflow', 'from_state', 'to_state',
+        'transition', 'performed_by', 'comment', 'performed_at',
+    ]
+    date_hierarchy = 'performed_at'
 
 
 @admin.register(NamingSeries)

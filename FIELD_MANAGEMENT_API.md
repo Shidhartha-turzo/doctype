@@ -14,7 +14,7 @@ Currently, you update fields by patching the entire schema:
 # Get auth token
 TOKEN=$(curl -X POST http://localhost:8000/auth/login/ \
   -H "Content-Type: application/json" \
-  -d '{"username": "spoofman", "password": "admin123"}' \
+  -d '{"username": "spoofman", "password": "admin123!"}' \
   | python -c "import sys, json; print(json.load(sys.stdin)['access_token'])")
 
 # Get current doctype schema
@@ -146,7 +146,7 @@ class DoctypeFieldManager:
 
 # Usage Examples
 if __name__ == "__main__":
-    manager = DoctypeFieldManager("spoofman", "admin123")
+    manager = DoctypeFieldManager("spoofman", "admin123!")
 
     # Get doctype ID (or use 1 for inventory-item)
     doctype_id = 1

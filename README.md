@@ -34,14 +34,12 @@ The Doctype Engine is an enterprise-grade framework that combines the flexibilit
 ### Application Framework
 - Django 5.2.8 with Django REST Framework 3.15.2
 - Dynamic doctype system with module organization
-- **Visual Field Builder** - Drag-and-drop interface for schema design (NEW!)
-- Slug-based admin URLs for readable doctype access (NEW!)
-- JSON-based schema storage (no dynamic table creation)
+- **Visual Field Builder** - Drag-and-drop interface for schema design - Slug-based admin URLs for readable doctype access - JSON-based schema storage (no dynamic table creation)
 - 20+ field types including computed fields
 - Support for hierarchical data (tree structures)
 - Child table relationships (one-to-many)
 - Document versioning and change tracking
-- Workflow engine with visual designer support
+- Workflow engine with state enforcement, approval UI, and transition history
 - Event-driven hooks system (Python, webhooks, email)
 - Custom fields at runtime without migrations
 - Advanced reporting system (Query Builder, SQL, Python)
@@ -430,7 +428,7 @@ curl -H "X-API-Key: YOUR_API_KEY" https://api.example.com/endpoint
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.10 - 3.13 (Python 3.14 is **not supported** due to breaking changes in the `ast` module and other standard library removals; use a virtual environment to pin your Python version)
 - PostgreSQL 12+ (recommended for production)
 - Redis (optional, for distributed caching and rate limiting)
 - Git
@@ -495,6 +493,13 @@ Access points:
 - Admin: http://127.0.0.1:8000/admin/
 - Swagger: http://127.0.0.1:8000/api/docs/
 - OpenAPI Schema: http://127.0.0.1:8000/api/schema/
+
+### Default Credentials
+
+| User | Password | Role |
+|------|----------|------|
+| `spoofman` | `admin123!` | Superuser |
+| `admin` | `admin123` | Superuser |
 
 ### Docker Setup
 
@@ -960,9 +965,7 @@ For production deployment with PostgreSQL:
 # Quick setup (macOS)
 ./setup_database_macos.sh
 
-# Or see full documentation
-# INSTALL_POSTGRESQL.md for quick start
-# POSTGRESQL_SETUP.md for complete guide
+# See POSTGRESQL_GUIDE.md for full documentation
 ```
 
 For web server deployment, use:
@@ -973,26 +976,59 @@ For web server deployment, use:
 ## Additional Documentation
 
 ### Core Documentation
-- [ENGINE_GUIDE.md](ENGINE_GUIDE.md) - Complete guide to the doctype engine
+- [ENGINE_GUIDE.md](ENGINE_GUIDE.md) - Complete guide to the doctype engine (includes doctype creation)
 - [API_GUIDE.md](API_GUIDE.md) - Detailed API documentation
 - [API_EXAMPLES.md](API_EXAMPLES.md) - API usage examples
 
 ### Getting Started
 - [QUICKSTART_10MIN.md](QUICKSTART_10MIN.md) - Build your first app in 10 minutes
-- [ITEM_DOCTYPE_SETUP_GUIDE.md](ITEM_DOCTYPE_SETUP_GUIDE.md) - Step-by-step guide to create an Item doctype
 - [REAL_WORLD_APPLICATIONS.md](REAL_WORLD_APPLICATIONS.md) - 6 complete use case examples
 
 ### Feature Guides
-- [VISUAL_FIELD_BUILDER.md](VISUAL_FIELD_BUILDER.md) - Drag-and-drop schema designer guide
 - [SECURITY_SUMMARY.md](SECURITY_SUMMARY.md) - Quick security reference
 - [PRODUCTION_LOGGING.md](PRODUCTION_LOGGING.md) - Production logging & change management guide
+- [FIELD_MANAGEMENT_API.md](FIELD_MANAGEMENT_API.md) - Managing fields via REST API
+- [CHILD_TABLE_GUIDE.md](CHILD_TABLE_GUIDE.md) - Child table relationships
+- [DB_RELATIONSHIPS_GUIDE.md](DB_RELATIONSHIPS_GUIDE.md) - Database relationships implementation
+- [EMAIL_AND_SHARING.md](EMAIL_AND_SHARING.md) - Email configuration & document sharing API
 
 ### Distribution & Deployment
-- [INSTALL_POSTGRESQL.md](INSTALL_POSTGRESQL.md) - Quick PostgreSQL setup
-- [POSTGRESQL_SETUP.md](POSTGRESQL_SETUP.md) - Complete PostgreSQL documentation
+- [POSTGRESQL_GUIDE.md](POSTGRESQL_GUIDE.md) - PostgreSQL setup and configuration
 
-### Project Information
-- [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) - Complete project overview and status
+### Project Status
+- [GAP_ANALYSIS.md](GAP_ANALYSIS.md) - Feature gap analysis
+
+## Key Highlights
+
+**No Migrations for Schema Changes** - Add fields to existing doctypes at runtime without database migrations:
+```bash
+curl -X POST /api/core/custom-fields/ \
+  -d '{"doctype_id": 1, "fieldname": "priority", "fieldtype": "select"}'
+```
+
+**Instant API** - Define a doctype and get a full REST API immediately:
+```
+POST   /api/core/doctypes/{id}/records/  # Create
+GET    /api/core/doctypes/{id}/records/  # List
+GET    /api/core/doctypes/{id}/records/1/ # Get
+PATCH  /api/core/doctypes/{id}/records/1/ # Update
+DELETE /api/core/doctypes/{id}/records/1/ # Delete
+```
+
+**Built-in Security** - Rate limiting, brute force protection, audit logging, and IP blacklisting all work out of the box.
+
+## Easter Eggs
+
+Hidden endpoints for entertainment:
+
+```bash
+curl http://localhost:8000/api/konami/       # Konami code
+curl http://localhost:8000/api/teapot/       # HTTP 418 I'm a teapot
+curl http://localhost:8000/api/dev-quotes/   # Random developer wisdom
+curl http://localhost:8000/api/matrix/?pill=red  # Red pill or blue pill
+curl http://localhost:8000/api/secret-stats/ # Project statistics
+curl http://localhost:8000/api/achievement/  # Achievement system
+```
 
 ## Support and Contributing
 

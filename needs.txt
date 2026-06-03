@@ -1,0 +1,23 @@
+ High Impact (recommended next)
+
+  1. ✅ Workflow execution engine — DONE: state transition enforcement, action buttons, approval UI, history, edit-locking on final states
+  2. ✅ Hooks execution — DONE: hooks fire across insert/save/delete/submit (doctypes/hook_engine.py); webhook + email + sandboxed-python (dunder-blocked, dict-merge computes field values on before_*); before_* failure aborts the save
+  3. ✅ Permissions enforcement — DONE: secure-by-default RBAC enforced across API + HTML views (doctypes/permissions.py), incl. role-based CRUD/submit/cancel, conditional access, and hidden/read-only field restrictions
+  4. ✅ Reports engine — DONE: query-builder + sandboxed-python + superuser-only SELECT-only SQL (doctypes/report_engine.py); JSON + CSV export via API (reports/, reports/<id>/run/); access = report-level (public/role/creator/super) AND doctype read permission
+
+  Medium Impact
+
+  5. Child tables UI — no inline table widget in document forms
+  6. Naming series execution — no auto-increment/prefix patterns actually applied
+  7. Advanced search/filtering — no full-text search or filter builder
+  8. Import/export — no CSV/Excel import wizard
+
+  Lower Impact
+
+  9. Document versioning execution — no auto-version on save or diff view
+  10. Custom fields runtime injection — model exists, no rendering
+  11. File attachments — not implemented at all
+
+  My recommendation: Start with workflow execution or hooks execution — they're high-impact, the models already exist, and they make the engine actually
+   do things rather than just store data. Want me to plan one of these?
+   

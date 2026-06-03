@@ -1,5 +1,7 @@
 # Production Logging & Change Management
 
+> This is the authoritative reference for the production logging system. See also `SECURITY_SUMMARY.md` for the broader security overview.
+
 ## Overview
 
 This document describes the comprehensive logging and change management system designed for production environments. The system tracks user login history with IP addresses, device information, and maintains a detailed changelog for all major system changes.

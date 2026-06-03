@@ -180,6 +180,89 @@
         margin-left: 8px;
         color: #666;
     }
+
+    .workflow-banner {
+        padding: 12px 20px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .workflow-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        color: white;
+        border-radius: 3px;
+        margin-left: 10px;
+        font-size: 13px;
+        font-weight: 500;
+    }
+
+    .workflow-final-note {
+        color: #dc3545;
+        margin-left: 8px;
+        font-size: 12px;
+    }
+
+    .transition-card {
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        padding: 15px;
+        margin-bottom: 10px;
+    }
+
+    .transition-card .transition-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+    }
+
+    .transition-card .transition-info {
+        flex: 1;
+    }
+
+    .transition-card .transition-flow {
+        font-size: 12px;
+        color: #666;
+        margin-top: 4px;
+    }
+
+    .transition-card textarea {
+        width: 100%;
+        margin-top: 8px;
+        padding: 8px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        min-height: 60px;
+        box-sizing: border-box;
+        font-size: 13px;
+    }
+
+    .transition-card .btn {
+        margin-left: 15px;
+        white-space: nowrap;
+    }
+
+    .history-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .history-table th {
+        padding: 10px;
+        text-align: left;
+        border-bottom: 2px solid #dee2e6;
+        background: #f8f9fa;
+        font-size: 13px;
+    }
+
+    .history-table td {
+        padding: 8px 10px;
+        border-bottom: 1px solid #dee2e6;
+        font-size: 13px;
+    }
 </style>
 {% endblock %}
 
@@ -198,6 +281,20 @@
         <li class="message {{ message.tags }}">{{ message }}</li>
         {% endfor %}
     </ul>
+    {% endif %}
+
+    {% if workflow_state %}
+    <div class="workflow-banner" style="background: {{ workflow_state.current_state.color }}20; border-left: 4px solid {{ workflow_state.current_state.color|default:'#6c757d' }};">
+        <div>
+            <strong>Workflow:</strong> {{ workflow_state.workflow.name }}
+            <span class="workflow-badge" style="background: {{ workflow_state.current_state.color|default:'#6c757d' }};">
+                {{ workflow_state.current_state.name }}
+            </span>
+            {% if workflow_state.current_state.is_final %}
+                <span class="workflow-final-note">(Final state — editing locked)</span>
+            {% endif %}
+        </div>
+    </div>
     {% endif %}
 
     <div class="form-card">
@@ -382,5 +479,77 @@
             </div>
         </form>
     </div>
+
+    {% if workflow_state and available_transitions %}
+    <div class="form-card" style="margin-top: 20px;">
+        <h3 style="margin-top: 0;">Workflow Actions</h3>
+        {% for transition in available_transitions %}
+        <div class="transition-card">
+            <form method="post" action="{% url 'document_transition' doctype.slug document.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="transition_id" value="{{ transition.id }}">
+                <div class="transition-row">
+                    <div class="transition-info">
+                        <strong>{{ transition.label }}</strong>
+                        <div class="transition-flow">
+                            {{ transition.from_state.name }} &rarr; {{ transition.to_state.name }}
+                        </div>
+                        {% if transition.require_comment %}
+                        <textarea name="comment" placeholder="Comment (required)" required></textarea>
+                        {% else %}
+                        <textarea name="comment" placeholder="Comment (optional)"></textarea>
+                        {% endif %}
+                    </div>
+                    <button type="submit" class="btn btn-primary">{{ transition.label }}</button>
+                </div>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if transition_history %}
+    <div class="form-card" style="margin-top: 20px;">
+        <h3 style="margin-top: 0;">Workflow History</h3>
+        <table class="history-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Action</th>
+                    <th>From</th>
+                    <th>To</th>
+                    <th>By</th>
+                    <th>Comment</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in transition_history %}
+                <tr>
+                    <td>{{ log.performed_at|date:"Y-m-d H:i" }}</td>
+                    <td>{{ log.transition.label|default:"Initialized" }}</td>
+                    <td>{{ log.from_state.name|default:"-" }}</td>
+                    <td>{{ log.to_state.name }}</td>
+                    <td>{{ log.performed_by.username|default:"-" }}</td>
+                    <td>{{ log.comment|default:"-" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
 </div>
+
+{% if can_edit is not None and not can_edit %}
+<script>
+    document.querySelectorAll('.form-card:first-of-type input, .form-card:first-of-type textarea, .form-card:first-of-type select').forEach(function(el) {
+        el.disabled = true;
+    });
+    var saveBtn = document.querySelector('.form-actions .btn-primary');
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Editing Locked';
+        saveBtn.style.background = '#6c757d';
+    }
+</script>
+{% endif %}
 {% endblock %}

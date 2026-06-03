@@ -13,7 +13,7 @@ A simple task management system where users can:
 ## Prerequisites
 
 - Server running (http://localhost:8000)
-- Admin credentials (username: spoofman, password: admin123)
+- Admin credentials (username: spoofman, password: admin123!)
 
 ## Step 1: Get Access Token (1 minute)
 
@@ -23,7 +23,7 @@ curl -X POST http://localhost:8000/auth/login/ \
   -H "Content-Type: application/json" \
   -d '{
     "username": "spoofman",
-    "password": "admin123"
+    "password": "admin123!"
   }' | python -m json.tool
 
 # Save the access_token from the response
@@ -185,7 +185,7 @@ curl -X PATCH http://localhost:8000/api/core/doctypes/1/records/2/ \
 ## Step 7: View in Admin Panel (1 minute)
 
 1. Open browser: http://localhost:8000/admin/
-2. Login with: spoofman / admin123
+2. Login with: spoofman / admin123!
 3. Navigate to: **Doctypes → Task → Documents**
 4. You'll see all your tasks with full CRUD interface!
 
@@ -257,42 +257,34 @@ In just 10 minutes, you've:
 
 ### Add Workflow (5 minutes)
 
-Create an approval workflow for high-priority tasks:
+Set up an approval workflow via Django Admin (`/admin/`):
 
+1. **Create Workflow**: Go to Workflows > Add, select your doctype, name it "Task Approval Flow"
+2. **Add States**: Create states — To Do (initial), In Progress, Review, Done (final)
+3. **Add Transitions**: Create transitions — Start Work, Submit for Review, Approve
+
+Once configured, the workflow activates automatically:
+- New documents start in the initial state (e.g., "To Do")
+- The document edit page shows a **workflow banner** with the current state
+- **Transition buttons** appear based on available actions and user roles
+- Documents in **final states** are locked from editing
+- The document list shows a **status column** with colored badges
+
+**Interact via API:**
 ```bash
-curl -X POST http://localhost:8000/api/workflows/ \
+# Check workflow state
+curl http://localhost:8000/api/core/documents/1/workflow/ \
+  -H "Authorization: Bearer $TOKEN"
+
+# Perform a transition
+curl -X POST http://localhost:8000/api/core/documents/1/workflow/transition/ \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{
-    "name": "Task Approval Flow",
-    "doctype_id": 1,
-    "is_active": true,
-    "workflow_data": {
-      "states": [
-        {"name": "To Do", "is_initial": true, "color": "#gray"},
-        {"name": "In Progress", "color": "#blue"},
-        {"name": "Review", "color": "#orange"},
-        {"name": "Done", "is_final": true, "color": "#green"}
-      ],
-      "transitions": [
-        {
-          "from_state": "To Do",
-          "to_state": "In Progress",
-          "label": "Start Work"
-        },
-        {
-          "from_state": "In Progress",
-          "to_state": "Review",
-          "label": "Submit for Review"
-        },
-        {
-          "from_state": "Review",
-          "to_state": "Done",
-          "label": "Approve"
-        }
-      ]
-    }
-  }'
+  -d '{"transition_id": 1, "comment": "Starting work"}'
+
+# View transition history
+curl http://localhost:8000/api/core/documents/1/workflow/history/ \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Add Automation (5 minutes)

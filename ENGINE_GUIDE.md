@@ -174,46 +174,49 @@ Role-based access control at doctype level.
 
 ## 🔄 Workflow Engine
 
-Visual state machine for document approval flows.
+Visual state machine for document approval flows with full execution and UI.
 
 **Components:**
-- **States**: Draft, Pending Approval, Approved, Rejected
-- **Transitions**: Rules for moving between states
-- **Actions**: What happens on transition
-- **Conditions**: When transitions are allowed
+- **States**: Named states with colors (e.g., Draft, Pending Approval, Approved, Rejected)
+- **Transitions**: Rules for moving between states, with role-based access and conditions
+- **Actions**: Webhooks and email notifications fired on transition
+- **Conditions**: Python expressions evaluated safely against document data
+- **Enforcement**: Documents in final states are locked from editing and deletion
+- **UI**: Workflow banner, transition buttons with comments, and history table in document views
 
-**Example Workflow:**
-```python
-{
-  "name": "Leave Approval",
-  "doctype": "Leave Application",
-  "states": [
-    {"name": "Draft", "is_initial": true, "color": "#gray"},
-    {"name": "Pending", "color": "#orange"},
-    {"name": "Approved", "is_final": true, "color": "#green"},
-    {"name": "Rejected", "is_final": true, "color": "#red"}
-  ],
-  "transitions": [
-    {
-      "from": "Draft",
-      "to": "Pending",
-      "label": "Submit",
-      "allowed_roles": ["Employee"]
-    },
-    {
-      "from": "Pending",
-      "to": "Approved",
-      "label": "Approve",
-      "allowed_roles": ["Manager"],
-      "condition": "doc.days <= 5 or user.is_hr_manager",
-      "actions": [
-        {"type": "email", "to": "doc.employee_email"},
-        {"type": "webhook", "url": "https://api.example.com/notify"}
-      ]
-    }
-  ]
-}
+**Service Layer** (`doctypes/workflow_engine.py`):
+- `WorkflowService.initialize_workflow(document, user)` — sets initial state on document creation
+- `WorkflowService.get_available_transitions(document, user)` — returns transitions the user can take
+- `WorkflowService.perform_transition(document, transition_id, user, comment)` — executes a transition atomically
+- `WorkflowService.can_edit_document(document)` — checks if document is editable (blocks final states)
+- `WorkflowService.get_transition_history(document)` — returns audit log of all transitions
+
+**UI Integration:**
+- Document edit page shows a workflow banner with current state badge
+- Available transitions appear as action buttons with optional comment fields
+- Full transition history table shows who did what and when
+- Documents in final states have all form fields disabled and save button locked
+- Document list page shows a workflow state column with colored badges
+
+**API Endpoints:**
+```bash
+GET  /api/core/documents/{id}/workflow/              # Current state + available transitions
+POST /api/core/documents/{id}/workflow/transition/    # Perform a transition
+GET  /api/core/documents/{id}/workflow/history/       # Transition audit log
+POST /api/core/documents/{id}/submit/                 # Submit (docstatus 0→1)
+POST /api/core/documents/{id}/cancel/                 # Cancel (docstatus 1→2)
 ```
+
+**HTML Endpoints:**
+```bash
+POST /{doctype_slug}/{document_id}/transition/        # Perform transition from UI
+```
+
+**Example Workflow Setup** (via Django Admin):
+1. Create a Workflow for a doctype (e.g., "Leave Approval" for "Leave Request")
+2. Add states: Draft (initial), Pending Approval, Approved (final), Rejected (final)
+3. Add transitions: Submit for Approval, Approve (require_comment), Reject (require_comment), Reopen
+4. Optionally set `allowed_roles` on transitions and `condition` expressions
 
 ---
 
@@ -473,9 +476,20 @@ POST /api/core/doctypes/{id}/records/
 POST /api/core/documents/{id}/submit/
 ```
 
-### Get Workflow States
+### Get Workflow State
 ```bash
-GET /api/workflows/{doctype_id}/states/
+GET /api/core/documents/{id}/workflow/
+```
+
+### Perform Workflow Transition
+```bash
+POST /api/core/documents/{id}/workflow/transition/
+# Body: {"transition_id": 1, "comment": "Approved"}
+```
+
+### Get Workflow History
+```bash
+GET /api/core/documents/{id}/workflow/history/
 ```
 
 ---
@@ -525,7 +539,60 @@ Computed: total_amount = sum(items.amount)
 
 ---
 
-## 📚 Next Steps
+## Creating Doctypes
+
+### Option 1: Minimal Doctype (Quickest)
+1. Go to: http://127.0.0.1:8000/admin/doctypes/doctype/add/
+2. Enter just the **Name** (e.g., "Item")
+3. Click **Save**
+4. The schema will auto-initialize with empty fields
+
+### Option 2: Using the Field Builder
+1. Go to: http://127.0.0.1:8000/admin/doctypes/doctype/add/
+2. Enter the **Name** (e.g., "Customer")
+3. Scroll down to the **Field Builder** section
+4. Click **"+ Add Field"**
+5. Fill in:
+   - Field Name: `customer_name` (lowercase, underscores only)
+   - Label: `Customer Name`
+   - Type: `string`
+   - Check "Required" if needed
+6. Click **Save Field**
+7. Add more fields as needed
+8. Click **Save** at the bottom
+
+### Option 3: Manual JSON Schema
+1. Go to: http://127.0.0.1:8000/admin/doctypes/doctype/add/
+2. Enter the **Name**
+3. Expand the **"Schema (JSON)"** fieldset
+4. Edit the schema directly:
+```json
+{
+  "fields": [
+    {
+      "name": "title",
+      "label": "Title",
+      "type": "string",
+      "required": true
+    }
+  ]
+}
+```
+5. Click **Save**
+
+### Verify Programmatically
+
+```bash
+python manage.py shell -c "
+from doctypes.models import Doctype
+for dt in Doctype.objects.all():
+    print(f'{dt.name}: {len(dt.schema.get(\"fields\", []))} fields')
+"
+```
+
+---
+
+## Next Steps
 
 1. **Create Your First Module** in admin panel
 2. **Design a Doctype** with fields
@@ -537,6 +604,4 @@ Computed: total_amount = sum(items.amount)
 
 The engine is running at **http://localhost:8000/admin/**
 
-Login: `spoofman` / `admin123`
-
-Happy Building! 🎉
+Default credentials: `spoofman` / `admin123!`

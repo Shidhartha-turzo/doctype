@@ -74,12 +74,10 @@ Based on comprehensive testing and codebase review, the core Doctype Engine is *
 - [YES] **Document Management** - Full CRUD via admin
 
 ### 8. Documentation
-- [YES] **5 Comprehensive Guides**
+- [YES] **Comprehensive Guides**
   - DB_RELATIONSHIPS_GUIDE.md
-  - DB_RELATIONSHIPS_TEST_RESULTS.md
-  - COMPREHENSIVE_TEST_REPORT.md
-  - DOCUMENT_SHARING_API.md
-  - EMAIL_SETUP_SUMMARY.md
+  - EMAIL_AND_SHARING.md
+  - POSTGRESQL_GUIDE.md
 - [YES] **README.md** - Complete system documentation
 
 ---
@@ -130,7 +128,7 @@ These features exist as **data models** but lack **user interface** or **view lo
 - Product → Categories
 
 ### 3. Workflow Engine
-**Status**: Models complete, execution logic missing
+**Status**: Complete (models + execution + UI)
 
 **What Exists**:
 - [YES] `Workflow` model
@@ -138,14 +136,14 @@ These features exist as **data models** but lack **user interface** or **view lo
 - [YES] `WorkflowTransition` model
 - [YES] `DocumentWorkflowState` model
 - [YES] Admin interface for configuration
-
-**What's Missing**:
-- [NO] Workflow execution engine
-- [NO] State transition enforcement
-- [NO] Permission checks based on workflow state
-- [NO] Workflow action buttons in document view
-- [NO] Email notifications on state change
-- [NO] Approval/rejection UI
+- [YES] Workflow execution engine (`WorkflowService` in `workflow_engine.py`)
+- [YES] State transition enforcement (final states block edits/deletes)
+- [YES] Permission checks based on workflow state (role-based transitions)
+- [YES] Workflow action buttons in document edit view
+- [YES] Email notifications on state change (via transition actions)
+- [YES] Approval/rejection UI with comment support
+- [YES] Workflow history table in document edit view
+- [YES] Workflow state column in document list view
 
 **Impact**: **HIGH** - Critical for approval processes
 **Example Use Cases**:
@@ -171,19 +169,21 @@ These features exist as **data models** but lack **user interface** or **view lo
 **Workaround**: Users can modify doctype schema directly
 
 ### 5. Reports System
-**Status**: Model exists, execution engine missing
+**Status**: Complete (execution engine + CSV export via API)
 
 **What Exists**:
 - [YES] `Report` model
 - [YES] Admin interface
+- [YES] Report execution engine (`doctypes/report_engine.py`) — query-builder, sandboxed-python, and superuser-only SELECT-only SQL
+- [YES] Result rendering as JSON ({columns, rows, count}) via `GET /reports/<id>/run/`
+- [YES] CSV export (`?format=csv`); report listing via `GET /reports/`
+- [YES] Report sharing — `is_public` / `allowed_roles`, gated additionally by doctype read permission
 
 **What's Missing**:
-- [NO] Query builder UI
-- [NO] Report execution engine
-- [NO] Result rendering (tables, charts)
-- [NO] Export functionality (Excel, PDF, CSV)
+- [NO] Query builder *UI* (engine + API done; no visual builder)
+- [NO] Charts / pivot rendering
+- [NO] Excel / PDF export (CSV only — avoids new dependency)
 - [NO] Scheduled reports
-- [NO] Report sharing
 
 **Impact**: **HIGH** - Reporting is essential for business apps
 **Example Use Cases**:
@@ -212,19 +212,21 @@ These features exist as **data models** but lack **user interface** or **view lo
 **Needed**: "INV-{YYYY}-{MM}-{####}", "SO-NORTH-{####}"
 
 ### 7. Hooks System
-**Status**: Model exists, execution missing
+**Status**: Complete (execution engine wired into the document lifecycle)
 
 **What Exists**:
 - [YES] `DoctypeHook` model
 - [YES] Support for before_save, after_save, etc.
 - [YES] Admin interface
+- [YES] Hook execution in document lifecycle (`doctypes/hook_engine.py`) — insert/save/delete/submit, fired from serializer + HTML views + WorkflowService
+- [YES] Python code execution — *sandboxed expression only* (no builtins, `__` rejected); returning a dict merges computed values into the document on before_* hooks
+- [YES] Webhook HTTP calls (POST with document payload)
+- [YES] Email triggers (via Django send_mail)
+- [YES] Error handling — before_* failures raise HookError and abort the save; after_* failures are logged only
 
 **What's Missing**:
-- [NO] Hook execution in document lifecycle
-- [NO] Python code execution
-- [NO] Webhook HTTP calls
-- [NO] Email triggers
-- [NO] Error handling for hook failures
+- [NO] `notification` action (no notification backend yet — logged no-op)
+- [NO] `on_change` field-level hook (other lifecycle events fire)
 
 **Impact**: **HIGH** - Essential for business logic customization
 **Example Use Cases**:
@@ -252,23 +254,23 @@ These features exist as **data models** but lack **user interface** or **view lo
 **Current**: ChangeLog provides basic tracking
 
 ### 9. Permissions System
-**Status**: Model exists, enforcement missing
+**Status**: Complete (secure-by-default RBAC enforced in views)
 
 **What Exists**:
 - [YES] `DoctypePermission` model
 - [YES] Role-based permission structure
 - [YES] Admin interface
+- [YES] Permission enforcement in views (`doctypes/permissions.py`, both API + HTML)
+- [YES] Field-level permissions (hidden_fields / read_only_fields applied in forms)
+- [YES] Conditional permissions (permission_condition evaluated via _SafeDocProxy)
+- [YES] Permission checking utilities (`has_doctype_permission`, `get_field_restrictions`, `HasDoctypePermission`)
 
 **What's Missing**:
-- [NO] Permission enforcement in views
-- [NO] Field-level permissions
-- [NO] Conditional permissions (user/owner)
-- [NO] Permission checking utilities
-- [NO] "Share with user" functionality
+- [NO] "Share with user" functionality (in-app per-user grants)
 
 **Impact**: **HIGH** - Required for multi-user apps
-**Current**: All authenticated users can access everything
-**Needed**: Role-based access control (RBAC)
+**Current**: Secure-by-default — a doctype with no permission rows is accessible
+to superusers only; access is granted per role via DoctypePermission.
 
 ---
 
@@ -462,13 +464,13 @@ These features are commonly expected but not yet built:
 
 ### Priority 1 (Critical) - Should Implement Next
 1. **Child Tables UI** - Core ERP feature, high demand
-2. **Workflow Execution** - Approval processes essential
-3. **Permissions Enforcement** - Multi-user security
+2. ~~**Workflow Execution**~~ - DONE: Full execution engine with UI enforcement
+3. ~~**Permissions Enforcement**~~ - DONE: secure-by-default RBAC across API + HTML views
 4. **File Attachments** - Nearly universal requirement
-5. **Hooks Execution** - Business logic customization
+5. ~~**Hooks Execution**~~ - DONE: webhook + email + sandboxed-python hooks across the document lifecycle
 
 ### Priority 2 (Important) - Near-term enhancements
-1. **Reports System** - Data analysis and insights
+1. ~~**Reports System**~~ - DONE: query/python/SQL engine with JSON + CSV export
 2. **Print Templates** - Professional document output
 3. **Import/Export UI** - Data migration support
 4. **Many-to-Many UI** - Tagging and categorization
@@ -578,7 +580,6 @@ Make it easy to connect with external systems:
 - ALLOWED_HOSTS (for deployment)
 
 ### What's Partially Complete [PARTIAL]
-- Workflow (models exist, no execution)
 - Reports (models exist, no engine)
 - Permissions (models exist, no enforcement)
 - Naming series (basic only, no advanced features)
@@ -638,9 +639,9 @@ Looking at the relationship requirements you specified:
 
 ### From Typical ERP Needs:
 - [NO] File attachments (critical gap)
-- [NO] Workflow execution (critical gap)
+- [YES] Workflow execution (complete with UI)
 - [NO] Print templates (critical gap)
-- [NO] Reports system (critical gap)
+- [YES] Reports system (query/python/SQL engine + CSV export)
 - [WARN] Child tables UI (critical gap)
 - [WARN] Permissions enforcement (critical gap)
 
@@ -665,7 +666,6 @@ Looking at the relationship requirements you specified:
 - **Documentation**: Comprehensive
 
 ### [PARTIAL] What's Partial:
-- **Workflows**: Models exist, execution missing
 - **Reports**: Models exist, engine missing
 - **Permissions**: Models exist, enforcement missing
 - **Child tables**: Backend ready, UI missing
@@ -679,7 +679,7 @@ Looking at the relationship requirements you specified:
 - **Notifications**: Collaboration feature
 
 ### Recommended Focus:
-**Priority 1**: Complete the partial features (child tables UI, workflow execution, permissions)
+**Priority 1**: Complete the partial features (child tables UI, permissions)
 **Priority 2**: Add critical missing features (file attachments, hooks)
 **Priority 3**: Build a complete vertical (e.g., CRM or Project Management)
 

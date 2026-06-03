@@ -172,6 +172,46 @@ class DocumentWorkflowState(models.Model):
         return f"{self.document} - {self.current_state.name}"
 
 
+class WorkflowTransitionLog(models.Model):
+    """
+    Audit log of all workflow state transitions for a document.
+    """
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name='workflow_logs'
+    )
+    workflow = models.ForeignKey(
+        'Workflow', on_delete=models.CASCADE
+    )
+    from_state = models.ForeignKey(
+        WorkflowState, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='logs_from'
+    )
+    to_state = models.ForeignKey(
+        WorkflowState, on_delete=models.SET_NULL,
+        null=True, related_name='logs_to'
+    )
+    transition = models.ForeignKey(
+        WorkflowTransition, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='logs'
+    )
+    performed_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True
+    )
+    comment = models.TextField(blank=True)
+    performed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-performed_at']
+        indexes = [
+            models.Index(fields=['document', '-performed_at']),
+        ]
+
+    def __str__(self):
+        from_name = self.from_state.name if self.from_state else 'N/A'
+        to_name = self.to_state.name if self.to_state else 'N/A'
+        return f"{self.document}: {from_name} -> {to_name}"
+
+
 class NamingSeries(models.Model):
     """
     Manages auto-numbering for documents.

@@ -130,18 +130,26 @@ class DynamicDocumentSerializer(serializers.Serializer):
             else:
                 cleaned_data[key] = value
 
+        from .hook_engine import HookService
+
+        request = self.context.get('request')
+        user = request.user if request else None
         document = Document(
             doctype=self.doctype,
             data=cleaned_data,
-            created_by=self.context['request'].user
+            created_by=user,
         )
-        document.save()
+        HookService.save_with_hooks(document, user=user, is_new=True)
         return document
 
     def update(self, instance, validated_data):
         """Update a Document instance"""
+        from .hook_engine import HookService
+
+        request = self.context.get('request')
+        user = request.user if request else None
         instance.data = validated_data
-        instance.save()
+        HookService.save_with_hooks(instance, user=user, is_new=False)
         return instance
 
 
@@ -176,3 +184,82 @@ class BulkShareSerializer(serializers.Serializer):
         max_length=1000,
         help_text="Optional personal message to include in the email"
     )
+
+
+# --- Workflow Serializers ---
+
+from .engine_models import (
+    WorkflowState, WorkflowTransition,
+    DocumentWorkflowState, WorkflowTransitionLog,
+)
+
+
+class WorkflowStateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorkflowState
+        fields = ['id', 'name', 'description', 'is_initial', 'is_final', 'is_success', 'color']
+
+
+class WorkflowTransitionSerializer(serializers.ModelSerializer):
+    from_state_name = serializers.CharField(source='from_state.name', read_only=True)
+    to_state_name = serializers.CharField(source='to_state.name', read_only=True)
+    allowed_role_names = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WorkflowTransition
+        fields = [
+            'id', 'label', 'from_state', 'from_state_name',
+            'to_state', 'to_state_name', 'require_comment',
+            'allowed_role_names',
+        ]
+
+    def get_allowed_role_names(self, obj):
+        return list(obj.allowed_roles.values_list('name', flat=True))
+
+
+class DocumentWorkflowStateSerializer(serializers.ModelSerializer):
+    current_state_name = serializers.CharField(source='current_state.name', read_only=True)
+    current_state_color = serializers.CharField(source='current_state.color', read_only=True)
+    current_state_is_final = serializers.BooleanField(source='current_state.is_final', read_only=True)
+    workflow_name = serializers.CharField(source='workflow.name', read_only=True)
+    available_transitions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DocumentWorkflowState
+        fields = [
+            'id', 'workflow', 'workflow_name',
+            'current_state', 'current_state_name',
+            'current_state_color', 'current_state_is_final',
+            'state_changed_at', 'state_changed_by',
+            'available_transitions',
+        ]
+
+    def get_available_transitions(self, obj):
+        request = self.context.get('request')
+        if not request or not hasattr(request, 'user'):
+            return []
+        from .workflow_engine import WorkflowService
+        transitions = WorkflowService.get_available_transitions(
+            obj.document, request.user
+        )
+        return WorkflowTransitionSerializer(transitions, many=True).data
+
+
+class PerformTransitionSerializer(serializers.Serializer):
+    transition_id = serializers.IntegerField()
+    comment = serializers.CharField(required=False, allow_blank=True, default='')
+
+
+class WorkflowTransitionLogSerializer(serializers.ModelSerializer):
+    from_state_name = serializers.CharField(source='from_state.name', read_only=True, default=None)
+    to_state_name = serializers.CharField(source='to_state.name', read_only=True, default=None)
+    transition_label = serializers.CharField(source='transition.label', read_only=True, default=None)
+    performed_by_username = serializers.CharField(source='performed_by.username', read_only=True, default=None)
+
+    class Meta:
+        model = WorkflowTransitionLog
+        fields = [
+            'id', 'from_state_name', 'to_state_name',
+            'transition_label', 'performed_by_username',
+            'comment', 'performed_at',
+        ]

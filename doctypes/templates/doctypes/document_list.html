@@ -203,6 +203,9 @@
             <thead>
                 <tr>
                     <th>Name</th>
+                    {% if has_workflow %}
+                    <th>Status</th>
+                    {% endif %}
                     {% for field in fields %}
                     <th>{{ field.label|default:field.name }}</th>
                     {% endfor %}
@@ -216,6 +219,19 @@
                 {% for document in documents %}
                 <tr>
                     <td><strong>{{ document.name }}</strong></td>
+                    {% if has_workflow %}
+                    <td>
+                        {% with ws=document|workflow_state %}
+                        {% if ws %}
+                            <span class="badge" style="background: {{ ws.current_state.color|default:'#6c757d' }}; color: white; padding: 4px 10px; border-radius: 3px;">
+                                {{ ws.current_state.name }}
+                            </span>
+                        {% else %}
+                            <span style="color: #999;">-</span>
+                        {% endif %}
+                        {% endwith %}
+                    </td>
+                    {% endif %}
                     {% for field in fields %}
                     <td>
                         {{ document.data|get_item:field.name|default:"-" }}

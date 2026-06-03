@@ -1,33 +1,46 @@
-# PostgreSQL Setup Guide
+# PostgreSQL Guide
 
-This guide explains how to set up PostgreSQL for the Doctype Engine.
+This guide covers PostgreSQL setup for the Doctype Engine. Development uses SQLite by default; PostgreSQL is recommended for production.
 
 ## Quick Start (macOS)
 
+Run this single command to set up everything:
+
 ```bash
-# 1. Run the automated setup script
-./setup_database_macos.sh
-
-# 2. Copy environment file
-cp .env.example .env
-
-# 3. Activate virtual environment
-source .venv/bin/activate
-
-# 4. Install/upgrade dependencies
-pip install -r requirements.txt
-
-# 5. Run migrations to create schema
-python manage.py migrate
-
-# 6. Create superuser
+./setup_database_macos.sh && \
+cp .env.example .env && \
+source .venv/bin/activate && \
+pip install -r requirements.txt && \
+python manage.py migrate && \
 python manage.py createsuperuser
+```
 
-# 7. Start server
+Then start the server:
+```bash
 python manage.py runserver
 ```
 
-Done! Your application is now running with PostgreSQL.
+### What This Does
+
+1. **Installs PostgreSQL** (if not already installed)
+2. **Creates database** `doctype_db`
+3. **Creates user** `doctype_user` with password `doctype_password`
+4. **Grants permissions** for the user
+5. **Sets up environment** variables
+6. **Installs dependencies** including `psycopg2-binary`
+7. **Creates database schema** (runs all migrations)
+8. **Creates superuser** for admin access
+
+### Verify It Works
+
+```bash
+python manage.py dbshell
+
+# Inside psql:
+\dt                    # List all tables
+SELECT * FROM doctypes_doctype LIMIT 5;
+\q                     # Quit
+```
 
 ---
 
@@ -80,7 +93,6 @@ EOF
 
 ### 3. Configure Environment
 
-Create or update `.env` file:
 ```bash
 cp .env.example .env
 ```
@@ -103,37 +115,62 @@ pip install -r requirements.txt
 
 ### 5. Run Migrations
 
-This creates all the database tables and schema:
 ```bash
 python manage.py migrate
 ```
 
-You should see output like:
-```
-Operations to perform:
-  Apply all migrations: admin, auth, contenttypes, core, doctypes, sessions
-Running migrations:
-  Applying contenttypes.0001_initial... OK
-  Applying auth.0001_initial... OK
-  Applying admin.0001_initial... OK
-  ...
-```
+### 6. Create Superuser
 
-### 6. Create Initial Data
-
-Create a superuser:
 ```bash
 python manage.py createsuperuser
 ```
 
 ### 7. Verify Setup
 
-Check that you can connect to the database:
 ```bash
 python manage.py dbshell
 ```
 
-This should open a PostgreSQL prompt. Type `\dt` to see all tables, then `\q` to quit.
+Type `\dt` to see all tables, then `\q` to quit.
+
+---
+
+## What Changed from SQLite
+
+### Before (SQLite):
+```python
+# settings.py
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
+}
+```
+
+### After (PostgreSQL):
+```python
+# settings.py
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': config('DB_NAME', default='doctype_db'),
+        'USER': config('DB_USER', default='doctype_user'),
+        'PASSWORD': config('DB_PASSWORD', default='doctype_password'),
+        'HOST': config('DB_HOST', default='localhost'),
+        'PORT': config('DB_PORT', default='5432'),
+    }
+}
+```
+
+### Why PostgreSQL?
+
+- **Better for production** - Handles concurrent connections
+- **JSON support** - Native JSONB for doctype schemas
+- **Advanced features** - Full-text search, triggers, views
+- **Scalability** - Handle millions of records
+- **ACID compliance** - Data integrity guaranteed
+- **Concurrent writes** - No database locking issues
 
 ---
 
@@ -183,7 +220,6 @@ django.db.utils.OperationalError: could not connect to server: Connection refuse
 ```
 
 **Solution:**
-Ensure PostgreSQL is running:
 ```bash
 # macOS
 brew services list
@@ -215,7 +251,6 @@ permission denied for schema public
 ```
 
 **Solution:**
-Grant schema permissions:
 ```bash
 psql doctype_db -c "GRANT ALL ON SCHEMA public TO doctype_user;"
 psql doctype_db -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO doctype_user;"
@@ -223,16 +258,18 @@ psql doctype_db -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLE
 
 ### Database Already Exists
 
-If you need to recreate the database:
 ```bash
 # WARNING: This deletes all data!
 psql postgres -c "DROP DATABASE IF EXISTS doctype_db;"
 psql postgres -c "CREATE DATABASE doctype_db OWNER doctype_user;"
+python manage.py migrate
 ```
 
-Then run migrations again:
+### PostgreSQL Not Installed?
+
 ```bash
-python manage.py migrate
+brew install postgresql@16
+brew services start postgresql@16
 ```
 
 ---
@@ -249,62 +286,6 @@ pg_dump -U doctype_user -h localhost doctype_db > backup.sql
 
 ```bash
 psql -U doctype_user -h localhost doctype_db < backup.sql
-```
-
----
-
-## Production Considerations
-
-### 1. Use Strong Passwords
-
-Generate a secure password:
-```bash
-openssl rand -base64 32
-```
-
-### 2. Configure pg_hba.conf
-
-Edit `/etc/postgresql/16/main/pg_hba.conf` (path may vary):
-```
-# Local connections
-local   all             all                                     peer
-# IPv4 local connections
-host    all             all             127.0.0.1/32            scram-sha-256
-```
-
-### 3. Enable SSL
-
-In `settings.py`:
-```python
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'doctype_db',
-        'USER': 'doctype_user',
-        'PASSWORD': 'secure_password',
-        'HOST': 'localhost',
-        'PORT': '5432',
-        'OPTIONS': {
-            'sslmode': 'require',
-        }
-    }
-}
-```
-
-### 4. Connection Pooling
-
-For production, consider using PgBouncer:
-```bash
-# Install PgBouncer
-apt install pgbouncer
-
-# Configure in settings.py
-DATABASES = {
-    'default': {
-        ...
-        'CONN_MAX_AGE': 600,  # Keep connections open for 10 minutes
-    }
-}
 ```
 
 ---
@@ -331,15 +312,63 @@ python manage.py loaddata data_backup.json
 
 ---
 
-## Next Steps
+## Production Considerations
 
-- [x] PostgreSQL installed and running
-- [x] Database and user created
-- [x] Migrations applied
-- [x] Superuser created
-- [ ] Create your first doctype
-- [ ] Set up production server (Gunicorn/Nginx)
-- [ ] Configure backups
-- [ ] Set up monitoring
+### 1. Use Strong Passwords
 
-For more help, see the main README.md or visit the documentation.
+```bash
+openssl rand -base64 32
+```
+
+### 2. Configure pg_hba.conf
+
+Edit `/etc/postgresql/16/main/pg_hba.conf` (path may vary):
+```
+# Local connections
+local   all             all                                     peer
+# IPv4 local connections
+host    all             all             127.0.0.1/32            scram-sha-256
+```
+
+### 3. Enable SSL
+
+```python
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'doctype_db',
+        'USER': 'doctype_user',
+        'PASSWORD': 'secure_password',
+        'HOST': 'localhost',
+        'PORT': '5432',
+        'OPTIONS': {
+            'sslmode': 'require',
+        }
+    }
+}
+```
+
+### 4. Connection Pooling
+
+For production, consider using PgBouncer:
+```bash
+apt install pgbouncer
+```
+
+In `settings.py`:
+```python
+DATABASES = {
+    'default': {
+        ...
+        'CONN_MAX_AGE': 600,  # Keep connections open for 10 minutes
+    }
+}
+```
+
+---
+
+## Setup Scripts
+
+- `setup_database_macos.sh` - Automated setup for macOS
+- `setup_database.sh` - Setup for Linux
+- `.env.example` - Template with PostgreSQL config

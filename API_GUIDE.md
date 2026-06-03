@@ -31,7 +31,7 @@ Content-Type: application/json
 
 {
   "username": "spoofman",
-  "password": "admin123"
+  "password": "admin123!"
 }
 
 # Response:
@@ -204,7 +204,7 @@ Authorization: Bearer YOUR_ACCESS_TOKEN
 ```bash
 curl -X POST http://localhost:8000/auth/login/ \
   -H "Content-Type: application/json" \
-  -d '{"username":"spoofman","password":"admin123"}'
+  -d '{"username":"spoofman","password":"admin123!"}'
 ```
 
 Save the `access_token` from the response.
@@ -256,7 +256,7 @@ const loginResponse = await fetch('http://localhost:8000/auth/login/', {
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
     username: 'spoofman',
-    password: 'admin123'
+    password: 'admin123!'
   })
 });
 
@@ -308,7 +308,7 @@ Access the Django admin at: http://localhost:8000/admin/
 
 Login with:
 - Username: `spoofman`
-- Password: `admin123`
+- Password: `admin123!`
 
 You can manage:
 - Doctypes

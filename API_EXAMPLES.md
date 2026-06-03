@@ -15,7 +15,7 @@ curl -X POST http://localhost:8000/api/token/ \
   -H "Content-Type: application/json" \
   -d '{
     "username": "spoofman",
-    "password": "admin123"
+    "password": "admin123!"
   }'
 ```
 
@@ -127,7 +127,7 @@ BASE_URL = "http://localhost:8000"
 # Obtain token
 response = requests.post(f"{BASE_URL}/api/token/", json={
     "username": "spoofman",
-    "password": "admin123"
+    "password": "admin123!"
 })
 tokens = response.json()
 access_token = tokens['access']
@@ -149,7 +149,7 @@ const response = await fetch('http://localhost:8000/api/token/', {
   },
   body: JSON.stringify({
     username: 'spoofman',
-    password: 'admin123'
+    password: 'admin123!'
   })
 });
 
