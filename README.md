@@ -37,12 +37,16 @@ The Doctype Engine is an enterprise-grade framework that combines the flexibilit
 - **Visual Field Builder** - Drag-and-drop interface for schema design - Slug-based admin URLs for readable doctype access - JSON-based schema storage (no dynamic table creation)
 - 20+ field types including computed fields
 - Support for hierarchical data (tree structures)
-- Child table relationships (one-to-many)
-- Document versioning and change tracking
+- Child tables (embedded-row `table` fields with inline add/remove UI)
+- Many-to-many links (multiselect-link fields with ordered link tracking)
 - Workflow engine with state enforcement, approval UI, and transition history
-- Event-driven hooks system (Python, webhooks, email)
-- Custom fields at runtime without migrations
-- Advanced reporting system (Query Builder, SQL, Python)
+- Event-driven hooks system (webhooks, email, sandboxed Python) firing across the document lifecycle
+- Secure-by-default role-based permissions enforced across API and HTML views, with field-level restrictions
+- Advanced reporting engine (query builder, sandboxed Python, superuser-only SQL) with JSON + CSV export
+- File attachments (upload/download/delete) with admin-configurable size/type limits
+- Print templates (HTML print engine + optional PDF) with letterhead/header/footer
+- CSV import/export with per-row validation and error reporting
+- Advanced structured search (multi-field operators, AND/OR, sort, pagination) + cross-doctype global search
 
 ### Security Features
 - **Multi-layered Security Architecture**
@@ -665,6 +669,37 @@ Content-Type: application/json
   "phone": "+1-555-0123",
   "status": "Active"
 }
+```
+
+### Feature Endpoints
+
+All endpoints below enforce doctype-level permissions (read/write/create/delete/export/import).
+
+```http
+# Workflow
+GET  /api/core/documents/{id}/workflow/
+POST /api/core/documents/{id}/workflow/transition/
+POST /api/core/documents/{id}/submit/    POST /api/core/documents/{id}/cancel/
+
+# Reports
+GET  /api/core/reports/
+GET  /api/core/reports/{id}/run/[?format=csv]
+
+# Attachments
+GET|POST /api/core/documents/{id}/attachments/
+GET|DELETE /api/core/attachments/{id}/
+
+# Print
+GET  /api/core/documents/{id}/print/[?output=pdf&format_id=<id>]
+
+# Import / Export
+GET  /api/core/{doctype}/export/
+GET  /api/core/{doctype}/import-template/
+POST /api/core/{doctype}/import/          # multipart 'file'
+
+# Search
+POST /api/core/{doctype}/search/          # structured filters, AND/OR, sort, pagination
+GET  /api/core/search/?q=                 # global cross-doctype search
 ```
 
 ### Security Endpoints
