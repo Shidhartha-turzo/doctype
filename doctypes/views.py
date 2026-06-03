@@ -21,6 +21,7 @@ from .hook_engine import HookService, HookError
 from .report_engine import ReportService, ReportError, ReportPermissionError
 from .print_engine import PrintService, PrintError
 from .search_engine import SearchService, SearchError
+from .child_tables import validate_table, ChildTableError
 from . import import_export
 from .permissions import has_doctype_permission, get_field_restrictions
 import logging
@@ -762,10 +763,18 @@ def document_create(request, doctype_slug):
                     data[field_name] = field_value.lower() in ['true', '1', 'yes', 'on']
                 elif field_type == 'json':
                     data[field_name] = json.loads(field_value) if field_value else None
+                elif field_type == 'table':
+                    rows = validate_table(field, field_value)
+                    if field.get('required') and not rows:
+                        errors[field_name] = f"{field.get('label', field_name)} requires at least one row"
+                    else:
+                        data[field_name] = rows
                 else:
                     data[field_name] = field_value
             except (ValueError, json.JSONDecodeError) as e:
                 errors[field_name] = f"Invalid {field_type} value"
+            except ChildTableError as e:
+                errors[field_name] = str(e)
 
         if not errors:
             # Generate document name
@@ -910,10 +919,18 @@ def document_edit(request, doctype_slug, document_id):
                     data[field_name] = field_value.lower() in ['true', '1', 'yes', 'on']
                 elif field_type == 'json':
                     data[field_name] = json.loads(field_value) if field_value else None
+                elif field_type == 'table':
+                    rows = validate_table(field, field_value)
+                    if field.get('required') and not rows:
+                        errors[field_name] = f"{field.get('label', field_name)} requires at least one row"
+                    else:
+                        data[field_name] = rows
                 else:
                     data[field_name] = field_value
             except (ValueError, json.JSONDecodeError) as e:
                 errors[field_name] = f"Invalid {field_type} value"
+            except ChildTableError as e:
+                errors[field_name] = str(e)
 
         if not errors:
             # Update document (firing before/after save hooks)

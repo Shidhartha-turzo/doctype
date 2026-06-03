@@ -234,7 +234,13 @@
                     {% endif %}
                     {% for field in fields %}
                     <td>
-                        {{ document.data|get_item:field.name|default:"-" }}
+                        {% if field.type == 'table' %}
+                            {% with rows=document.data|get_item:field.name %}
+                                {% if rows %}{{ rows|length }} row{{ rows|length|pluralize }}{% else %}-{% endif %}
+                            {% endwith %}
+                        {% else %}
+                            {{ document.data|get_item:field.name|default:"-" }}
+                        {% endif %}
                     </td>
                     {% endfor %}
                     <td>{{ document.created_at|date:"Y-m-d H:i" }}</td>

@@ -123,6 +123,22 @@ class DynamicDocumentSerializer(serializers.Serializer):
                     self.fields[field_name] = serializers.DateTimeField(required=required)
                 elif field_type == 'json':
                     self.fields[field_name] = serializers.JSONField(required=required)
+                elif field_type == 'table':
+                    self.fields[field_name] = serializers.JSONField(required=required)
+
+    def validate(self, attrs):
+        """Validate child-table fields against their column sub-schema."""
+        from .child_tables import validate_table, ChildTableError
+
+        for field_config in (self.doctype.schema.get('fields', []) if self.doctype else []):
+            if field_config['type'] == 'table' and field_config['name'] in attrs:
+                try:
+                    attrs[field_config['name']] = validate_table(
+                        field_config, attrs[field_config['name']]
+                    )
+                except ChildTableError as e:
+                    raise serializers.ValidationError({field_config['name']: str(e)})
+        return attrs
 
     def to_representation(self, instance):
         """Convert Document instance to dict"""

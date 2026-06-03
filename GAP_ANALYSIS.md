@@ -87,18 +87,22 @@ Based on comprehensive testing and codebase review, the core Doctype Engine is *
 These features exist as **data models** but lack **user interface** or **view logic**:
 
 ### 1. Child Tables (Table Fields)
-**Status**: Backend implemented, no UI for inline editing
+**Status**: Implemented (embedded-row table fields with inline UI)
+
+**Design**: a `table` field defines `columns` (sub-field defs) and stores its
+rows directly in the parent's `data[field]` as a list of dicts — consistent
+with the JSON-first engine (no separate child Document records).
 
 **What Exists**:
-- [YES] `parent_document` field on Document model
-- [YES] `get_child_documents()` helper method
-- [YES] Can create child documents via API
+- [YES] `parent_document` field + `get_child_documents()` (legacy relational path, still available)
+- [YES] Inline table widget in document forms (`document_form.html` — add/remove row JS)
+- [YES] Child-table row count in list view
+- [YES] Validation of child table data (`doctypes/child_tables.py`, shared by API + HTML)
+- [YES] API support (table field accepted + validated in DynamicDocumentSerializer)
 
 **What's Missing**:
-- [NO] Inline table widget in document forms
-- [NO] Add/remove row functionality in UI
-- [NO] Child table rendering in list view
-- [NO] Validation of child table data
+- [NO] Per-column link/select widgets in rows (cells are text/number inputs)
+- [NO] Column totals / computed footer
 
 **Impact**: **MEDIUM** - Child tables are core ERP feature
 **Example Use Cases**:
@@ -479,7 +483,7 @@ These features are commonly expected but not yet built:
 ## Priority Matrix
 
 ### Priority 1 (Critical) - Should Implement Next
-1. **Child Tables UI** - Core ERP feature, high demand
+1. ~~**Child Tables UI**~~ - DONE: inline table widget + embedded-row validation
 2. ~~**Workflow Execution**~~ - DONE: Full execution engine with UI enforcement
 3. ~~**Permissions Enforcement**~~ - DONE: secure-by-default RBAC across API + HTML views
 4. ~~**File Attachments**~~ - DONE: upload/list/download/delete API with size+type validation and RBAC
@@ -601,7 +605,6 @@ Make it easy to connect with external systems:
 - Document versioning (model exists, no auto-version/diff)
 
 ### What's Missing [NO]
-- Child tables UI
 - Dashboard
 - Notifications
 
@@ -643,7 +646,7 @@ The system is **production-ready** for:
 
 ### From Original Requirements:
 Looking at the relationship requirements you specified:
-- [YES] One-to-Many (Child tables) - **Backend done, UI missing**
+- [YES] One-to-Many (Child tables) - **Done: embedded-row table fields + inline UI**
 - [YES] One-to-One - **Fully implemented via DocumentLink**
 - [YES] Many-to-One - **Fully implemented and tested**
 - [WARN] Many-to-Many - **Backend done, UI missing**
@@ -651,10 +654,11 @@ Looking at the relationship requirements you specified:
 ### From Typical ERP Needs:
 - [YES] File attachments (upload/download/delete API + validation + RBAC)
 - [YES] Workflow execution (complete with UI)
+- [YES] Child tables (embedded-row table fields with inline UI)
 - [YES] Print templates (HTML print engine + optional PDF)
 - [YES] Reports system (query/python/SQL engine + CSV export)
-- [WARN] Child tables UI (critical gap)
-- [WARN] Permissions enforcement (critical gap)
+- [YES] Child tables UI (inline table widget + validation)
+- [YES] Permissions enforcement (secure-by-default RBAC)
 
 ### From Modern App Expectations:
 - [NO] Dashboard/home page
@@ -677,10 +681,9 @@ Looking at the relationship requirements you specified:
 - **Documentation**: Comprehensive
 
 ### [PARTIAL] What's Partial:
-- **Reports**: Models exist, engine missing
-- **Permissions**: Models exist, enforcement missing
-- **Child tables**: Backend ready, UI missing
 - **Many-to-many links**: Backend ready, UI missing
+- **Naming series**: Basic only, no advanced patterns
+- **Custom fields / versioning**: Models exist, runtime missing
 
 ### [MISSING] What's Missing:
 - **Dashboard**: UX enhancement

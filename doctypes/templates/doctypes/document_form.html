@@ -452,6 +452,15 @@
                         value="{% if document %}{{ document.data|get_item:field.name|default:'#000000' }}{% endif %}"
                     >
 
+                {% elif field.type == 'table' %}
+                    <div class="child-table" data-field="{{ field.name }}">
+                        <input type="hidden" name="{{ field.name }}" id="id_{{ field.name }}">
+                        {% with colsid="ctcols_"|add:field.name rowsid="ctrows_"|add:field.name %}
+                            {{ field.columns|default:''|json_script:colsid }}
+                            {% if document %}{{ document.data|get_item:field.name|default:''|json_script:rowsid }}{% else %}{{ ''|json_script:rowsid }}{% endif %}
+                        {% endwith %}
+                    </div>
+
                 {% else %}
                     {# Default to text input for string and other types #}
                     <input
@@ -538,6 +547,81 @@
     </div>
     {% endif %}
 </div>
+
+<style>
+    .child-table table.ct-grid { width:100%; border-collapse:collapse; margin-bottom:8px; }
+    .child-table .ct-grid th, .child-table .ct-grid td { border:1px solid #ddd; padding:4px; text-align:left; }
+    .child-table .ct-grid th { background:#f7f7f7; font-size:12px; }
+    .child-table .ct-grid input { width:100%; box-sizing:border-box; padding:4px; border:1px solid #ccc; border-radius:3px; }
+    .child-table .ct-add { background:#0d6efd; color:#fff; border:0; padding:6px 12px; border-radius:4px; cursor:pointer; }
+    .child-table .ct-del { background:#dc3545; color:#fff; border:0; padding:2px 8px; border-radius:3px; cursor:pointer; }
+</style>
+<script>
+    document.querySelectorAll('.child-table').forEach(function (wrap) {
+        var field = wrap.dataset.field;
+        function readJSON(id, fallback) {
+            var el = document.getElementById(id);
+            if (!el) return fallback;
+            try { var v = JSON.parse(el.textContent); return v; } catch (e) { return fallback; }
+        }
+        var cols = readJSON('ctcols_' + field, []);
+        if (!Array.isArray(cols)) cols = [];
+        var rows = readJSON('ctrows_' + field, []);
+        if (!Array.isArray(rows)) rows = [];
+        var hidden = document.getElementById('id_' + field);
+
+        var table = document.createElement('table');
+        table.className = 'ct-grid';
+        table.innerHTML = '<thead><tr>' +
+            cols.map(function (c) { return '<th>' + (c.label || c.name) + (c.required ? ' *' : '') + '</th>'; }).join('') +
+            '<th></th></tr></thead><tbody></tbody>';
+        var tbody = table.querySelector('tbody');
+
+        function addRow(data) {
+            data = data || {};
+            var tr = document.createElement('tr');
+            cols.forEach(function (c) {
+                var td = document.createElement('td');
+                var inp = document.createElement('input');
+                inp.dataset.col = c.name;
+                inp.type = (['integer', 'decimal', 'currency', 'percent'].indexOf(c.type) !== -1) ? 'number' : 'text';
+                if (inp.type === 'number') inp.step = 'any';
+                if (data[c.name] != null) inp.value = data[c.name];
+                td.appendChild(inp);
+                tr.appendChild(td);
+            });
+            var rtd = document.createElement('td');
+            var del = document.createElement('button');
+            del.type = 'button'; del.className = 'ct-del'; del.textContent = '✕';
+            del.onclick = function () { tr.remove(); };
+            rtd.appendChild(del);
+            tr.appendChild(rtd);
+            tbody.appendChild(tr);
+        }
+        rows.forEach(addRow);
+
+        var addBtn = document.createElement('button');
+        addBtn.type = 'button'; addBtn.className = 'ct-add'; addBtn.textContent = '+ Add Row';
+        addBtn.onclick = function () { addRow({}); };
+        wrap.appendChild(table);
+        wrap.appendChild(addBtn);
+
+        var form = wrap.closest('form');
+        if (form) {
+            form.addEventListener('submit', function () {
+                var out = [];
+                tbody.querySelectorAll('tr').forEach(function (tr) {
+                    var row = {}, has = false;
+                    tr.querySelectorAll('input[data-col]').forEach(function (inp) {
+                        if (inp.value !== '') { row[inp.dataset.col] = inp.value; has = true; }
+                    });
+                    if (has) out.push(row);
+                });
+                hidden.value = JSON.stringify(out);
+            });
+        }
+    });
+</script>
 
 {% if can_edit is not None and not can_edit %}
 <script>
