@@ -25,6 +25,10 @@ urlpatterns = [
     path('reports/', views.report_list, name='report_list'),
     path('reports/<int:report_id>/run/', views.report_run, name='report_run'),
 
+    # Attachments API
+    path('documents/<int:document_id>/attachments/', views.document_attachments, name='document_attachments'),
+    path('attachments/<int:attachment_id>/', views.attachment_detail, name='attachment_download'),
+
     # Dynamic Form Views
     path('<slug:doctype_slug>/', views.document_list, name='document_list'),
     path('<slug:doctype_slug>/create/', views.document_create, name='document_create'),

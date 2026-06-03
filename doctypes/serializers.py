@@ -1,5 +1,25 @@
 from rest_framework import serializers
-from .models import Doctype, Document, DocumentShare
+from .models import Doctype, Document, DocumentShare, DocumentAttachment
+
+
+class DocumentAttachmentSerializer(serializers.ModelSerializer):
+    """Read serializer for document attachments."""
+    uploaded_by_username = serializers.CharField(source='uploaded_by.username', read_only=True)
+    download_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DocumentAttachment
+        fields = [
+            'id', 'document', 'filename', 'content_type', 'size',
+            'uploaded_by', 'uploaded_by_username', 'uploaded_at', 'download_url',
+        ]
+        read_only_fields = fields
+
+    def get_download_url(self, obj):
+        from django.urls import reverse
+        request = self.context.get('request')
+        url = reverse('attachment_download', args=[obj.id])
+        return request.build_absolute_uri(url) if request else url
 
 
 class DoctypeSerializer(serializers.ModelSerializer):

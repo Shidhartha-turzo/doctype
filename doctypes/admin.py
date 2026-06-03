@@ -5,7 +5,7 @@ from django.utils.html import format_html
 from django.template.response import TemplateResponse
 from django import forms
 import json
-from .models import Doctype, Document, Module, DocumentShare, DocumentLink, DocumentLinkMultiple
+from .models import Doctype, Document, Module, DocumentShare, DocumentLink, DocumentLinkMultiple, DocumentAttachment
 from .engine_models import (
     DoctypePermission, DocumentVersion, Workflow, WorkflowState, WorkflowTransition,
     DocumentWorkflowState, WorkflowTransitionLog, NamingSeries, DoctypeHook, CustomField, Report
@@ -226,6 +226,14 @@ class DocumentAdmin(admin.ModelAdmin):
     list_filter = ['doctype', 'docstatus', 'is_deleted', 'created_at', 'updated_at', 'modified_by']
     search_fields = ['name', 'data']
     readonly_fields = ['created_at', 'updated_at', 'version_number']
+
+
+@admin.register(DocumentAttachment)
+class DocumentAttachmentAdmin(admin.ModelAdmin):
+    list_display = ['id', 'filename', 'document', 'content_type', 'size', 'uploaded_by', 'uploaded_at']
+    list_filter = ['content_type', 'uploaded_at']
+    search_fields = ['filename']
+    readonly_fields = ['uploaded_at', 'size', 'content_type']
 
 
 @admin.register(DoctypePermission)

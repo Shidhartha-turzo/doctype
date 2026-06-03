@@ -160,6 +160,14 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# Document attachments
+MAX_ATTACHMENT_SIZE_MB = 10
+ALLOWED_ATTACHMENT_EXTENSIONS = [
+    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'rtf',
+    'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg',
+    'zip', 'json', 'xml',
+]
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/dev/ref/settings/#default-auto-field
 

@@ -9,12 +9,12 @@ from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.views.decorators.http import require_http_methods
 from drf_spectacular.utils import extend_schema, OpenApiParameter
-from .models import Doctype, Document, DocumentShare
+from .models import Doctype, Document, DocumentShare, DocumentAttachment
 from .serializers import (
     DoctypeSerializer, DoctypeListSerializer, DynamicDocumentSerializer,
     DocumentShareSerializer, BulkShareSerializer,
     DocumentWorkflowStateSerializer, PerformTransitionSerializer,
-    WorkflowTransitionLogSerializer,
+    WorkflowTransitionLogSerializer, DocumentAttachmentSerializer,
 )
 from .workflow_engine import WorkflowService, WorkflowError
 from .hook_engine import HookService, HookError
@@ -402,6 +402,89 @@ def report_run(request, report_id):
         return response
 
     return Response(result)
+
+
+# ============================================================================
+# Attachments API
+# ============================================================================
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def document_attachments(request, document_id):
+    """List a document's attachments (GET) or upload a new one (POST)."""
+    document = get_object_or_404(Document, id=document_id)
+
+    if request.method == 'GET':
+        if not has_doctype_permission(request.user, document.doctype, 'read'):
+            return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+        attachments = document.attachments.all()
+        return Response(
+            DocumentAttachmentSerializer(attachments, many=True, context={'request': request}).data
+        )
+
+    # POST = upload
+    if not has_doctype_permission(request.user, document.doctype, 'write'):
+        return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    upload = request.FILES.get('file')
+    if not upload:
+        return Response(
+            {'detail': "No file provided (use multipart field 'file')."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    from django.conf import settings
+    import os
+
+    max_bytes = getattr(settings, 'MAX_ATTACHMENT_SIZE_MB', 10) * 1024 * 1024
+    if upload.size > max_bytes:
+        return Response(
+            {'detail': f'File exceeds the {max_bytes // (1024 * 1024)} MB limit.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    extension = os.path.splitext(upload.name)[1].lstrip('.').lower()
+    allowed = [e.lower() for e in getattr(settings, 'ALLOWED_ATTACHMENT_EXTENSIONS', [])]
+    if allowed and extension not in allowed:
+        return Response(
+            {'detail': f"File type '.{extension}' is not allowed."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    attachment = DocumentAttachment.objects.create(
+        document=document,
+        file=upload,
+        filename=upload.name,
+        content_type=getattr(upload, 'content_type', '') or '',
+        size=upload.size,
+        uploaded_by=request.user,
+    )
+    return Response(
+        DocumentAttachmentSerializer(attachment, context={'request': request}).data,
+        status=status.HTTP_201_CREATED,
+    )
+
+
+@api_view(['GET', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def attachment_detail(request, attachment_id):
+    """Download (GET) or delete (DELETE) a single attachment."""
+    attachment = get_object_or_404(DocumentAttachment, id=attachment_id)
+    doctype = attachment.document.doctype
+
+    if request.method == 'DELETE':
+        if not has_doctype_permission(request.user, doctype, 'delete'):
+            return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+        attachment.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # GET = download
+    if not has_doctype_permission(request.user, doctype, 'read'):
+        return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+    from django.http import FileResponse
+    return FileResponse(
+        attachment.file.open('rb'), as_attachment=True, filename=attachment.filename
+    )
 
 
 # ============================================================================

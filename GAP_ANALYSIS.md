@@ -279,16 +279,20 @@ to superusers only; access is granted per role via DoctypePermission.
 These features are commonly expected but not yet built:
 
 ### 1. File Attachments
-**Status**: Not implemented
+**Status**: Implemented (API + storage + validation)
 
-**What's Needed**:
-- File upload field type
-- Storage backend (local/S3)
-- Attachment model
-- Upload API endpoint
-- File preview in documents
-- Download/delete functionality
-- Size and type validation
+**What Exists**:
+- [YES] `DocumentAttachment` model (file, filename, content_type, size, uploaded_by)
+- [YES] Storage backend (local MEDIA_ROOT; file removed on row delete)
+- [YES] Upload API — `POST /documents/<id>/attachments/` (multipart)
+- [YES] List / download / delete — `GET /documents/<id>/attachments/`, `GET|DELETE /attachments/<id>/`
+- [YES] Size + extension validation (settings: MAX_ATTACHMENT_SIZE_MB, ALLOWED_ATTACHMENT_EXTENSIONS)
+- [YES] RBAC — upload=write, list/download=read, delete=delete
+
+**What's Missing**:
+- [NO] Upload widget in the HTML document form (API only)
+- [NO] Inline preview / thumbnails
+- [NO] Remote storage backend (S3) — local only
 
 **Impact**: **HIGH** - Most business apps need file uploads
 **Use Cases**:
@@ -466,7 +470,7 @@ These features are commonly expected but not yet built:
 1. **Child Tables UI** - Core ERP feature, high demand
 2. ~~**Workflow Execution**~~ - DONE: Full execution engine with UI enforcement
 3. ~~**Permissions Enforcement**~~ - DONE: secure-by-default RBAC across API + HTML views
-4. **File Attachments** - Nearly universal requirement
+4. ~~**File Attachments**~~ - DONE: upload/list/download/delete API with size+type validation and RBAC
 5. ~~**Hooks Execution**~~ - DONE: webhook + email + sandboxed-python hooks across the document lifecycle
 
 ### Priority 2 (Important) - Near-term enhancements
@@ -638,7 +642,7 @@ Looking at the relationship requirements you specified:
 - [WARN] Many-to-Many - **Backend done, UI missing**
 
 ### From Typical ERP Needs:
-- [NO] File attachments (critical gap)
+- [YES] File attachments (upload/download/delete API + validation + RBAC)
 - [YES] Workflow execution (complete with UI)
 - [NO] Print templates (critical gap)
 - [YES] Reports system (query/python/SQL engine + CSV export)
@@ -672,7 +676,6 @@ Looking at the relationship requirements you specified:
 - **Many-to-many links**: Backend ready, UI missing
 
 ### [MISSING] What's Missing:
-- **File attachments**: Critical feature
 - **Print templates**: Business necessity
 - **Import/export UI**: Data migration
 - **Dashboard**: UX enhancement

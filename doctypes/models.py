@@ -337,6 +337,37 @@ class DocumentShare(models.Model):
         return f"{self.document} shared with {self.recipient_email}"
 
 
+def attachment_upload_path(instance, filename):
+    """Store attachments under media/attachments/<doctype>/<document_id>/."""
+    from django.utils.text import get_valid_filename
+    safe_name = get_valid_filename(filename)
+    return f"attachments/{instance.document.doctype.slug}/{instance.document_id}/{safe_name}"
+
+
+class DocumentAttachment(models.Model):
+    """A file attached to a document."""
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='attachments')
+    file = models.FileField(upload_to=attachment_upload_path)
+    filename = models.CharField(max_length=255, help_text="Original file name")
+    content_type = models.CharField(max_length=100, blank=True)
+    size = models.PositiveIntegerField(default=0, help_text="Size in bytes")
+
+    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='uploaded_attachments')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-uploaded_at']
+        indexes = [models.Index(fields=['document', '-uploaded_at'])]
+
+    def __str__(self):
+        return f"{self.filename} ({self.document})"
+
+    def delete(self, *args, **kwargs):
+        # Remove the stored file before deleting the row.
+        self.file.delete(save=False)
+        super().delete(*args, **kwargs)
+
+
 class DocumentLink(models.Model):
     """
     Proper database relationship for Link fields
