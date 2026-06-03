@@ -9,7 +9,7 @@ from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.views.decorators.http import require_http_methods
 from drf_spectacular.utils import extend_schema, OpenApiParameter
-from .models import Doctype, Document, DocumentShare, DocumentAttachment
+from .models import Doctype, Document, DocumentShare, DocumentAttachment, DocumentLinkMultiple
 from .serializers import (
     DoctypeSerializer, DoctypeListSerializer, DynamicDocumentSerializer,
     DocumentShareSerializer, BulkShareSerializer,
@@ -645,6 +645,22 @@ def global_search(request):
 # Dynamic Form Views for Document Management
 # ============================================================================
 
+def _sync_multi_links(document, multi_link_fields_data):
+    """Create ordered DocumentLinkMultiple rows for many-to-many fields."""
+    for field_name, target_ids in multi_link_fields_data.items():
+        for order, target_id in enumerate(target_ids):
+            try:
+                target_doc = Document.objects.get(id=int(target_id))
+                DocumentLinkMultiple.objects.create(
+                    source_document=document,
+                    target_document=target_doc,
+                    field_name=field_name,
+                    order=order,
+                )
+            except (Document.DoesNotExist, ValueError):
+                pass  # Already validated during form processing
+
+
 def _require_doctype_perm(request, doctype, action, document=None):
     """Raise PermissionDenied (403) if the user lacks the action on the doctype."""
     if not has_doctype_permission(request.user, doctype, action, document=document):
@@ -709,23 +725,25 @@ def document_create(request, doctype_slug):
     # Get available documents for link fields
     link_field_options = {}
     for field in fields:
-        if field['type'] == 'link':
+        # 'link' (single) and 'multiselect' with a link_doctype (many-to-many)
+        # both pick from the target doctype's documents.
+        if field['type'] in ('link', 'multiselect') and field.get('link_doctype'):
             link_doctype_name = field.get('link_doctype')
-            if link_doctype_name:
-                try:
-                    link_doctype = Doctype.objects.get(name=link_doctype_name, is_active=True)
-                    link_field_options[field['name']] = Document.objects.filter(
-                        doctype=link_doctype,
-                        is_deleted=False
-                    ).order_by('name')
-                except Doctype.DoesNotExist:
-                    link_field_options[field['name']] = []
+            try:
+                link_doctype = Doctype.objects.get(name=link_doctype_name, is_active=True)
+                link_field_options[field['name']] = Document.objects.filter(
+                    doctype=link_doctype,
+                    is_deleted=False
+                ).order_by('name')
+            except Doctype.DoesNotExist:
+                link_field_options[field['name']] = []
 
     if request.method == 'POST':
         # Collect and validate form data
         data = {}
         errors = {}
         link_fields_data = {}  # Store link field values separately
+        multi_link_fields_data = {}  # field_name -> [target document ids]
 
         for field in fields:
             field_name = field['name']
@@ -733,6 +751,33 @@ def document_create(request, doctype_slug):
             # Never accept values for read-only fields, even if posted.
             if field_name in readonly_fields:
                 continue
+
+            # Multiselect: many-to-many document link (with link_doctype) or a
+            # plain list of static option values. Uses getlist for multi-values.
+            if field_type == 'multiselect':
+                selected = request.POST.getlist(field_name)
+                if field.get('link_doctype'):
+                    names = []
+                    ids = []
+                    for val in selected:
+                        try:
+                            target = Document.objects.get(id=int(val))
+                            names.append(target.name)
+                            ids.append(target.id)
+                        except (Document.DoesNotExist, ValueError):
+                            errors[field_name] = f"Invalid {field.get('label', field_name)} selection"
+                    if field.get('required') and not names:
+                        errors[field_name] = f"{field.get('label', field_name)} is required"
+                    elif field_name not in errors:
+                        data[field_name] = names
+                        multi_link_fields_data[field_name] = ids
+                else:
+                    if field.get('required') and not selected:
+                        errors[field_name] = f"{field.get('label', field_name)} is required"
+                    else:
+                        data[field_name] = selected
+                continue
+
             field_value = request.POST.get(field_name, '').strip()
 
             # Check required fields
@@ -815,6 +860,9 @@ def document_create(request, doctype_slug):
                 except (Document.DoesNotExist, ValueError):
                     pass  # Already validated above
 
+            # Create DocumentLinkMultiple entries for many-to-many fields
+            _sync_multi_links(document, multi_link_fields_data)
+
             messages.success(request, f'{doctype.name} "{document.name}" created successfully!')
             return redirect('document_list', doctype_slug=doctype_slug)
         else:
@@ -859,17 +907,18 @@ def document_edit(request, doctype_slug, document_id):
     # Get available documents for link fields
     link_field_options = {}
     for field in fields:
-        if field['type'] == 'link':
+        # 'link' (single) and 'multiselect' with a link_doctype (many-to-many)
+        # both pick from the target doctype's documents.
+        if field['type'] in ('link', 'multiselect') and field.get('link_doctype'):
             link_doctype_name = field.get('link_doctype')
-            if link_doctype_name:
-                try:
-                    link_doctype = Doctype.objects.get(name=link_doctype_name, is_active=True)
-                    link_field_options[field['name']] = Document.objects.filter(
-                        doctype=link_doctype,
-                        is_deleted=False
-                    ).order_by('name')
-                except Doctype.DoesNotExist:
-                    link_field_options[field['name']] = []
+            try:
+                link_doctype = Doctype.objects.get(name=link_doctype_name, is_active=True)
+                link_field_options[field['name']] = Document.objects.filter(
+                    doctype=link_doctype,
+                    is_deleted=False
+                ).order_by('name')
+            except Doctype.DoesNotExist:
+                link_field_options[field['name']] = []
 
     if request.method == 'POST' and not can_edit:
         messages.error(request, edit_reason)
@@ -881,6 +930,7 @@ def document_edit(request, doctype_slug, document_id):
         data = dict(document.data or {})
         errors = {}
         link_fields_data = {}  # Store link field values separately
+        multi_link_fields_data = {}  # field_name -> [target document ids]
 
         for field in fields:
             field_name = field['name']
@@ -888,6 +938,33 @@ def document_edit(request, doctype_slug, document_id):
             # Never accept values for read-only fields, even if posted.
             if field_name in readonly_fields:
                 continue
+
+            # Multiselect: many-to-many document link (with link_doctype) or a
+            # plain list of static option values. Uses getlist for multi-values.
+            if field_type == 'multiselect':
+                selected = request.POST.getlist(field_name)
+                if field.get('link_doctype'):
+                    names = []
+                    ids = []
+                    for val in selected:
+                        try:
+                            target = Document.objects.get(id=int(val))
+                            names.append(target.name)
+                            ids.append(target.id)
+                        except (Document.DoesNotExist, ValueError):
+                            errors[field_name] = f"Invalid {field.get('label', field_name)} selection"
+                    if field.get('required') and not names:
+                        errors[field_name] = f"{field.get('label', field_name)} is required"
+                    elif field_name not in errors:
+                        data[field_name] = names
+                        multi_link_fields_data[field_name] = ids
+                else:
+                    if field.get('required') and not selected:
+                        errors[field_name] = f"{field.get('label', field_name)} is required"
+                    else:
+                        data[field_name] = selected
+                continue
+
             field_value = request.POST.get(field_name, '').strip()
 
             # Check required fields
@@ -959,6 +1036,11 @@ def document_edit(request, doctype_slug, document_id):
                     )
                 except (Document.DoesNotExist, ValueError):
                     pass  # Already validated above
+
+            # Replace many-to-many links for the submitted multiselect fields
+            for field_name in multi_link_fields_data.keys():
+                document.multi_links_out.filter(field_name=field_name).delete()
+            _sync_multi_links(document, multi_link_fields_data)
 
             messages.success(request, f'{doctype.name} "{document.name}" updated successfully!')
             return redirect('document_list', doctype_slug=doctype_slug)

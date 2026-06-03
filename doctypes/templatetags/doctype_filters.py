@@ -14,6 +14,15 @@ def get_item(dictionary, key):
     return dictionary.get(key)
 
 
+@register.filter(name='contains')
+def contains(value, item):
+    """True if `item` is in `value` (list/tuple/str). Safe on None."""
+    try:
+        return item in value
+    except TypeError:
+        return False
+
+
 @register.filter(name='workflow_state')
 def workflow_state_filter(document):
     """Safely get workflow state for a document, returns None if not set."""

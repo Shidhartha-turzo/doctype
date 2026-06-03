@@ -351,14 +351,50 @@
                         {% endfor %}
                     </select>
 
-                {% elif field.type == 'select' or field.type == 'multiselect' %}
+                {% elif field.type == 'multiselect' and field.link_doctype %}
+                    {# Many-to-many: select multiple documents from the linked doctype #}
+                    <select
+                        name="{{ field.name }}"
+                        id="id_{{ field.name }}"
+                        class="form-control"
+                        multiple
+                        {% if field.required %}required{% endif %}
+                        {% if field.readonly %}disabled{% endif %}
+                    >
+                        {% for link_doc in link_field_options|get_item:field.name %}
+                        <option value="{{ link_doc.id }}"
+                            {% if document and document.data|get_item:field.name|contains:link_doc.name %}selected{% endif %}>
+                            {{ link_doc.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <small class="field-hint">Hold Ctrl/Cmd to select multiple.</small>
+
+                {% elif field.type == 'multiselect' %}
+                    <select
+                        name="{{ field.name }}"
+                        id="id_{{ field.name }}"
+                        class="form-control"
+                        multiple
+                        {% if field.required %}required{% endif %}
+                        {% if field.readonly %}disabled{% endif %}
+                    >
+                        {% for option in field.options %}
+                        <option value="{{ option }}"
+                            {% if document and document.data|get_item:field.name|contains:option %}selected{% endif %}>
+                            {{ option }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <small class="field-hint">Hold Ctrl/Cmd to select multiple.</small>
+
+                {% elif field.type == 'select' %}
                     <select
                         name="{{ field.name }}"
                         id="id_{{ field.name }}"
                         class="form-control"
                         {% if field.required %}required{% endif %}
                         {% if field.readonly %}disabled{% endif %}
-                        {% if field.type == 'multiselect' %}multiple{% endif %}
                     >
                         <option value="">-- Select --</option>
                         {% for option in field.options %}

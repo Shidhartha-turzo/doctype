@@ -125,6 +125,9 @@ class DynamicDocumentSerializer(serializers.Serializer):
                     self.fields[field_name] = serializers.JSONField(required=required)
                 elif field_type == 'table':
                     self.fields[field_name] = serializers.JSONField(required=required)
+                elif field_type == 'multiselect':
+                    # Stored as a list (static options or linked document names)
+                    self.fields[field_name] = serializers.JSONField(required=required)
 
     def validate(self, attrs):
         """Validate child-table fields against their column sub-schema."""

@@ -111,19 +111,22 @@ with the JSON-first engine (no separate child Document records).
 - BOM → BOM Items
 
 ### 2. Many-to-Many Links (Multiselect Link)
-**Status**: Model exists, no form UI
+**Status**: Implemented (multiselect-link form UI)
+
+**Design**: a `multiselect` field with a `link_doctype` is a many-to-many
+document link; without it, it's a plain multi-value static select. Selected
+document names are stored in `data[field]` and mirrored to ordered
+`DocumentLinkMultiple` rows.
 
 **What Exists**:
-- [YES] `DocumentLinkMultiple` model
-- [YES] `get_linked_documents()` helper method
+- [YES] `DocumentLinkMultiple` model + `get_linked_documents()` + order preservation
 - [YES] Admin interface for management
-- [YES] Order preservation support
+- [YES] Multiselect dropdown in document forms (options from the linked doctype)
+- [YES] Form template handling + view logic (create/edit populate, store, and re-sync links)
+- [YES] API support (multiselect accepted as a list by DynamicDocumentSerializer)
 
 **What's Missing**:
-- [NO] Multiselect dropdown in document forms
-- [NO] Tagging interface for multiple selection
-- [NO] Form template handling for multiselect links
-- [NO] View logic to populate multiselect options
+- [NO] Tag-style chip UI (uses a native multi-select dropdown)
 
 **Impact**: **MEDIUM** - Needed for tags, categories, team assignments
 **Example Use Cases**:
@@ -493,7 +496,7 @@ These features are commonly expected but not yet built:
 1. ~~**Reports System**~~ - DONE: query/python/SQL engine with JSON + CSV export
 2. ~~**Print Templates**~~ - DONE: HTML print engine + optional PDF (xhtml2pdf)
 3. ~~**Import/Export**~~ - DONE: CSV import/export with validation, error reporting, and template
-4. **Many-to-Many UI** - Tagging and categorization
+4. ~~**Many-to-Many UI**~~ - DONE: multiselect-link form widget + ordered link sync
 5. ~~**Advanced Search**~~ - DONE: structured multi-field search engine (operators, AND/OR, sort, pagination)
 
 ### Priority 3 (Nice to Have) - Future enhancements
@@ -649,7 +652,7 @@ Looking at the relationship requirements you specified:
 - [YES] One-to-Many (Child tables) - **Done: embedded-row table fields + inline UI**
 - [YES] One-to-One - **Fully implemented via DocumentLink**
 - [YES] Many-to-One - **Fully implemented and tested**
-- [WARN] Many-to-Many - **Backend done, UI missing**
+- [YES] Many-to-Many - **Done: multiselect-link field + ordered link sync**
 
 ### From Typical ERP Needs:
 - [YES] File attachments (upload/download/delete API + validation + RBAC)
@@ -681,7 +684,6 @@ Looking at the relationship requirements you specified:
 - **Documentation**: Comprehensive
 
 ### [PARTIAL] What's Partial:
-- **Many-to-many links**: Backend ready, UI missing
 - **Naming series**: Basic only, no advanced patterns
 - **Custom fields / versioning**: Models exist, runtime missing
 
