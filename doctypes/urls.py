@@ -8,6 +8,7 @@ router.register(r'doctypes', views.DoctypeViewSet, basename='doctype')
 urlpatterns = [
     path('', include(router.urls)),
     path('schema/<slug:slug>/', views.get_doctype_schema, name='doctype_schema'),
+    path('search/', views.global_search, name='global_search'),
     path('search/<slug:slug>/', views.search_documents, name='search_documents'),
     path('schema/openapi/', views.openapi_schema, name='openapi_schema'),
 
@@ -31,6 +32,9 @@ urlpatterns = [
 
     # Print API
     path('documents/<int:document_id>/print/', views.print_document, name='print_document'),
+
+    # Advanced search (slug-scoped POST)
+    path('<slug:doctype_slug>/search/', views.document_search, name='document_search'),
 
     # Import / Export API (slug-scoped; literal second segment, so they are not
     # shadowed by the single-segment document_list catch-all below)

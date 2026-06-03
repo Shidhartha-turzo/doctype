@@ -316,19 +316,23 @@ These features are commonly expected but not yet built:
 **Current**: Users start at admin or doctype lists
 
 ### 3. Advanced Search
-**Status**: Basic filtering only
+**Status**: Implemented (structured search engine via API)
 
 **What Exists**:
 - [YES] Basic list filtering
 - [YES] Admin search
+- [YES] Structured search engine (`doctypes/search_engine.py`)
+- [YES] Free-text query across name/data
+- [YES] Multi-field search with AND/OR matching
+- [YES] Operators: eq, ne, contains, not_contains, starts_with, ends_with, gt, gte, lt, lte, in, is_empty, is_not_empty
+- [YES] Safe sorting + pagination
+- [YES] Field-restriction aware (hidden fields stripped from results)
+- [YES] `POST /<doctype>/search/`
 
 **What's Missing**:
-- [NO] Full-text search
-- [NO] Multi-field search
-- [NO] Search operators (contains, starts with, etc.)
 - [NO] Saved searches
-- [NO] Search suggestions
-- [NO] Advanced filter builder
+- [NO] Search suggestions / autocomplete
+- [NO] Visual filter-builder UI (filters are passed as JSON)
 
 **Impact**: **MEDIUM-HIGH** - Important for usability with large datasets
 
@@ -424,14 +428,15 @@ These features are commonly expected but not yet built:
 **Impact**: **HIGH** - Critical for data migration
 
 ### 10. Global Search
-**Status**: Not implemented
+**Status**: Implemented (API)
 
-**What's Needed**:
-- Search across all doctypes
-- Quick search bar in header
-- Search results page
-- Recent searches
-- Search filters
+**What Exists**:
+- [YES] Search across all doctypes the user can read — `GET /search/?q=`
+- [YES] Per-doctype read-permission filtering; results grouped by doctype
+
+**What's Missing**:
+- [NO] Quick search bar in header (UI)
+- [NO] Recent searches
 
 **Impact**: **MEDIUM** - UX enhancement
 
@@ -485,7 +490,7 @@ These features are commonly expected but not yet built:
 2. ~~**Print Templates**~~ - DONE: HTML print engine + optional PDF (xhtml2pdf)
 3. ~~**Import/Export**~~ - DONE: CSV import/export with validation, error reporting, and template
 4. **Many-to-Many UI** - Tagging and categorization
-5. **Advanced Search** - Usability with scale
+5. ~~**Advanced Search**~~ - DONE: structured multi-field search engine (operators, AND/OR, sort, pagination)
 
 ### Priority 3 (Nice to Have) - Future enhancements
 1. **Dashboard** - Better landing experience
@@ -498,7 +503,7 @@ These features are commonly expected but not yet built:
 1. **Custom Fields UI** - Low-code customization
 2. **Calendar View** - Scheduling visualization
 3. **Kanban View** - Task management
-4. **Global Search** - Cross-doctype search
+4. ~~**Global Search**~~ - DONE: cross-doctype search API (GET /search/?q=)
 5. **Modern Frontend** - React/Vue rebuild
 
 ---
@@ -598,7 +603,6 @@ Make it easy to connect with external systems:
 ### What's Missing [NO]
 - Child tables UI
 - Dashboard
-- Advanced search
 - Notifications
 
 ---
@@ -655,7 +659,7 @@ Looking at the relationship requirements you specified:
 ### From Modern App Expectations:
 - [NO] Dashboard/home page
 - [NO] Real-time notifications
-- [NO] Advanced search
+- [YES] Advanced search (structured + global)
 - [NO] Bulk operations
 - [YES] Import/export (CSV, with validation + error reporting)
 - [NO] Mobile app/PWA

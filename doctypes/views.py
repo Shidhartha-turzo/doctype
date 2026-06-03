@@ -20,6 +20,7 @@ from .workflow_engine import WorkflowService, WorkflowError
 from .hook_engine import HookService, HookError
 from .report_engine import ReportService, ReportError, ReportPermissionError
 from .print_engine import PrintService, PrintError
+from .search_engine import SearchService, SearchError
 from . import import_export
 from .permissions import has_doctype_permission, get_field_restrictions
 import logging
@@ -586,6 +587,57 @@ def doctype_import(request, doctype_slug):
     # 207-ish semantics: created some, maybe with row errors.
     http_status = status.HTTP_201_CREATED if result['created'] else status.HTTP_400_BAD_REQUEST
     return Response(result, status=http_status)
+
+
+# ============================================================================
+# Advanced Search API
+# ============================================================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def document_search(request, doctype_slug):
+    """
+    Advanced structured search within a doctype.
+
+    JSON body:
+      {
+        "query": "free text",            # optional, matches name/data
+        "filters": [{"field","op","value"}],
+        "match": "all" | "any",          # how filters combine (default all)
+        "sort": "field" | "-field",
+        "page": 1, "page_size": 50
+      }
+    """
+    doctype = get_object_or_404(Doctype, slug=doctype_slug, is_active=True)
+    if not has_doctype_permission(request.user, doctype, 'read'):
+        return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    body = request.data if isinstance(request.data, dict) else {}
+    try:
+        result = SearchService.search(
+            doctype,
+            request.user,
+            filters=body.get('filters'),
+            match=body.get('match', 'all'),
+            query=body.get('query'),
+            sort=body.get('sort'),
+            page=body.get('page', 1),
+            page_size=body.get('page_size', 50),
+        )
+    except SearchError as e:
+        return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    return Response(result)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def global_search(request):
+    """Search a term (?q=) across every doctype the user can read."""
+    try:
+        result = SearchService.global_search(request.user, request.query_params.get('q', ''))
+    except SearchError as e:
+        return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    return Response(result)
 
 
 # ============================================================================
