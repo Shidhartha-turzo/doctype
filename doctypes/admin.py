@@ -8,7 +8,8 @@ import json
 from .models import Doctype, Document, Module, DocumentShare, DocumentLink, DocumentLinkMultiple, DocumentAttachment
 from .engine_models import (
     DoctypePermission, DocumentVersion, Workflow, WorkflowState, WorkflowTransition,
-    DocumentWorkflowState, WorkflowTransitionLog, NamingSeries, DoctypeHook, CustomField, Report
+    DocumentWorkflowState, WorkflowTransitionLog, NamingSeries, DoctypeHook, CustomField, Report,
+    PrintFormat
 )
 
 
@@ -312,6 +313,13 @@ class ReportAdmin(admin.ModelAdmin):
     list_display = ['name', 'doctype', 'report_type', 'is_public', 'created_by', 'created_at']
     list_filter = ['doctype', 'report_type', 'is_public']
     search_fields = ['name', 'description']
+
+
+@admin.register(PrintFormat)
+class PrintFormatAdmin(admin.ModelAdmin):
+    list_display = ['name', 'doctype', 'page_size', 'is_default', 'is_active', 'created_by']
+    list_filter = ['doctype', 'page_size', 'is_default', 'is_active']
+    search_fields = ['name']
 
 
 @admin.register(DocumentShare)

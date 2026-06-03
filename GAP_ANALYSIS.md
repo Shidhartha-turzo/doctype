@@ -359,15 +359,19 @@ These features are commonly expected but not yet built:
 **Impact**: **MEDIUM** - Enhances collaboration
 
 ### 6. Print Templates
-**Status**: Not implemented
+**Status**: Implemented (HTML print engine; optional PDF)
 
-**What's Needed**:
-- Print format designer
-- HTML/PDF templates
-- Print view rendering
-- Header/footer customization
-- Letterhead support
-- PDF generation
+**What Exists**:
+- [YES] `PrintFormat` model (per-doctype template, css, letterhead, header, footer, page_size, default)
+- [YES] Print view rendering — `GET /documents/<id>/print/` (Django-template body + wrapped page)
+- [YES] Generic fallback layout when no PrintFormat is defined
+- [YES] Header / footer / letterhead customization
+- [YES] PDF generation — optional via xhtml2pdf (`?output=pdf`); HTML view prints to PDF from the browser with no dependency
+- [YES] RBAC — printing requires doctype read permission
+
+**What's Missing**:
+- [NO] Visual print-format *designer* (templates authored as HTML in admin)
+- [NO] Bundled PDF engine (xhtml2pdf is optional; needs system libs on some platforms)
 
 **Impact**: **HIGH** - Essential for business documents
 **Use Cases**:
@@ -475,7 +479,7 @@ These features are commonly expected but not yet built:
 
 ### Priority 2 (Important) - Near-term enhancements
 1. ~~**Reports System**~~ - DONE: query/python/SQL engine with JSON + CSV export
-2. **Print Templates** - Professional document output
+2. ~~**Print Templates**~~ - DONE: HTML print engine + optional PDF (xhtml2pdf)
 3. **Import/Export UI** - Data migration support
 4. **Many-to-Many UI** - Tagging and categorization
 5. **Advanced Search** - Usability with scale
@@ -591,10 +595,8 @@ Make it easy to connect with external systems:
 
 ### What's Missing [NO]
 - Child tables UI
-- File attachments
 - Dashboard
 - Advanced search
-- Print templates
 - Import/export UI
 - Notifications
 
@@ -644,7 +646,7 @@ Looking at the relationship requirements you specified:
 ### From Typical ERP Needs:
 - [YES] File attachments (upload/download/delete API + validation + RBAC)
 - [YES] Workflow execution (complete with UI)
-- [NO] Print templates (critical gap)
+- [YES] Print templates (HTML print engine + optional PDF)
 - [YES] Reports system (query/python/SQL engine + CSV export)
 - [WARN] Child tables UI (critical gap)
 - [WARN] Permissions enforcement (critical gap)
@@ -676,7 +678,6 @@ Looking at the relationship requirements you specified:
 - **Many-to-many links**: Backend ready, UI missing
 
 ### [MISSING] What's Missing:
-- **Print templates**: Business necessity
 - **Import/export UI**: Data migration
 - **Dashboard**: UX enhancement
 - **Notifications**: Collaboration feature

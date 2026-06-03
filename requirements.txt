@@ -29,3 +29,7 @@ django-filter==24.3
 
 # HTTP (webhooks)
 requests==2.32.3
+
+# Optional: PDF print output (browsers can also print/save the HTML view).
+# Needs system cairo/pango libraries on some platforms.
+# xhtml2pdf==0.2.16

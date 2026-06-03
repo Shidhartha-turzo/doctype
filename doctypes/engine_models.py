@@ -355,3 +355,45 @@ class Report(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class PrintFormat(models.Model):
+    """
+    A printable layout for a doctype's documents.
+
+    `template` is rendered with the Django template engine against a restricted
+    context (doc, data, fields, document). letterhead/header/footer/css wrap the
+    rendered body to produce the final printable page.
+    """
+    PAGE_SIZES = [
+        ('A4', 'A4'),
+        ('Letter', 'Letter'),
+        ('Legal', 'Legal'),
+    ]
+
+    name = models.CharField(max_length=255, unique=True)
+    doctype = models.ForeignKey(Doctype, on_delete=models.CASCADE, related_name='print_formats')
+
+    template = models.TextField(
+        blank=True,
+        help_text="HTML body, Django template syntax (e.g. {{ doc.name }}, {{ data.field }}). "
+                  "If blank, a generic field table is rendered."
+    )
+    css = models.TextField(blank=True, help_text="Extra CSS for the printable page")
+    letterhead = models.TextField(blank=True, help_text="HTML shown at the top of every page")
+    header = models.TextField(blank=True, help_text="HTML shown above the body")
+    footer = models.TextField(blank=True, help_text="HTML shown below the body")
+
+    page_size = models.CharField(max_length=10, choices=PAGE_SIZES, default='A4')
+    is_default = models.BooleanField(default=False, help_text="Default format for this doctype")
+    is_active = models.BooleanField(default=True)
+
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['doctype', 'name']
+
+    def __str__(self):
+        return self.name

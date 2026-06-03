@@ -29,6 +29,9 @@ urlpatterns = [
     path('documents/<int:document_id>/attachments/', views.document_attachments, name='document_attachments'),
     path('attachments/<int:attachment_id>/', views.attachment_detail, name='attachment_download'),
 
+    # Print API
+    path('documents/<int:document_id>/print/', views.print_document, name='print_document'),
+
     # Dynamic Form Views
     path('<slug:doctype_slug>/', views.document_list, name='document_list'),
     path('<slug:doctype_slug>/create/', views.document_create, name='document_create'),

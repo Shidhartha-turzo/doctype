@@ -19,6 +19,7 @@ from .serializers import (
 from .workflow_engine import WorkflowService, WorkflowError
 from .hook_engine import HookService, HookError
 from .report_engine import ReportService, ReportError, ReportPermissionError
+from .print_engine import PrintService, PrintError
 from .permissions import has_doctype_permission, get_field_restrictions
 import logging
 import json
@@ -493,6 +494,43 @@ def attachment_detail(request, attachment_id):
     return FileResponse(
         attachment.file.open('rb'), as_attachment=True, filename=attachment.filename
     )
+
+
+# ============================================================================
+# Print API
+# ============================================================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def print_document(request, document_id):
+    """
+    Render a document for printing.
+
+    Query params:
+      - format_id: specific PrintFormat to use (defaults to the doctype default)
+      - output: 'html' (default) or 'pdf' (requires xhtml2pdf)
+
+    Note: 'output' is used rather than 'format' because DRF reserves the
+    'format' query parameter for content negotiation.
+    """
+    document = get_object_or_404(Document, id=document_id)
+    if not has_doctype_permission(request.user, document.doctype, 'read'):
+        return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    format_id = request.query_params.get('format_id')
+    output = request.query_params.get('output', 'html').lower()
+
+    from django.http import HttpResponse
+    try:
+        if output == 'pdf':
+            pdf_bytes = PrintService.render_pdf(document, format_id=format_id)
+            response = HttpResponse(pdf_bytes, content_type='application/pdf')
+            response['Content-Disposition'] = f'inline; filename="{document.name}.pdf"'
+            return response
+        html = PrintService.render_html(document, format_id=format_id)
+        return HttpResponse(html, content_type='text/html')
+    except PrintError as e:
+        return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 # ============================================================================
