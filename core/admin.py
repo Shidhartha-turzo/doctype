@@ -44,6 +44,11 @@ class SystemSettingsAdmin(admin.ModelAdmin):
             'fields': ('allow_document_sharing', 'email_rate_limit'),
             'description': 'Control email-based features and rate limiting'
         }),
+        ('Attachments', {
+            'fields': ('max_attachment_size_mb', 'allowed_attachment_extensions'),
+            'description': 'Control which files users may attach to documents. '
+                           'Empty extension list allows any type.'
+        }),
         ('Password Policy', {
             'fields': ('min_password_length', 'require_uppercase', 'require_lowercase',
                       'require_digit', 'require_special_char', 'password_expiry_days',

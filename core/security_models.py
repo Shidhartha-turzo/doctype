@@ -10,6 +10,15 @@ from datetime import timedelta
 import hashlib
 
 
+def default_attachment_extensions():
+    """Safe default allowlist of attachment extensions."""
+    return [
+        'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'rtf',
+        'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg',
+        'zip', 'json', 'xml',
+    ]
+
+
 class SystemSettings(models.Model):
     """
     Centralized system security settings (Single doctype - only one record).
@@ -192,6 +201,21 @@ class SystemSettings(models.Model):
     session_refresh_on_activity = models.BooleanField(
         default=True,
         help_text="Refresh session timeout on user activity"
+    )
+
+    # Attachments
+    max_attachment_size_mb = models.IntegerField(
+        default=10,
+        validators=[MinValueValidator(1), MaxValueValidator(1024)],
+        help_text="Maximum size (MB) for a single document attachment"
+    )
+    allowed_attachment_extensions = models.JSONField(
+        default=default_attachment_extensions,
+        blank=True,
+        help_text=(
+            "List of allowed file extensions (without the dot), e.g. "
+            '["pdf", "png", "docx"]. Empty list allows any extension.'
+        )
     )
 
     # Password Policy

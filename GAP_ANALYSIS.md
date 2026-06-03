@@ -286,7 +286,7 @@ These features are commonly expected but not yet built:
 - [YES] Storage backend (local MEDIA_ROOT; file removed on row delete)
 - [YES] Upload API — `POST /documents/<id>/attachments/` (multipart)
 - [YES] List / download / delete — `GET /documents/<id>/attachments/`, `GET|DELETE /attachments/<id>/`
-- [YES] Size + extension validation (settings: MAX_ATTACHMENT_SIZE_MB, ALLOWED_ATTACHMENT_EXTENSIONS)
+- [YES] Size + extension validation — **admin-configurable at runtime** via SystemSettings (max_attachment_size_mb, allowed_attachment_extensions); falls back to settings.py defaults
 - [YES] RBAC — upload=write, list/download=read, delete=delete
 
 **What's Missing**:

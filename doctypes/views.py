@@ -434,17 +434,25 @@ def document_attachments(request, document_id):
         )
 
     from django.conf import settings
+    from core.security_models import SystemSettings
     import os
 
-    max_bytes = getattr(settings, 'MAX_ATTACHMENT_SIZE_MB', 10) * 1024 * 1024
+    # Limits are admin-configurable via SystemSettings, falling back to the
+    # static settings.py defaults if the singleton has no value.
+    system_settings = SystemSettings.get_settings()
+    max_mb = system_settings.max_attachment_size_mb or getattr(settings, 'MAX_ATTACHMENT_SIZE_MB', 10)
+    max_bytes = max_mb * 1024 * 1024
     if upload.size > max_bytes:
         return Response(
-            {'detail': f'File exceeds the {max_bytes // (1024 * 1024)} MB limit.'},
+            {'detail': f'File exceeds the {max_mb} MB limit.'},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    configured = system_settings.allowed_attachment_extensions
+    if configured is None:
+        configured = getattr(settings, 'ALLOWED_ATTACHMENT_EXTENSIONS', [])
     extension = os.path.splitext(upload.name)[1].lstrip('.').lower()
-    allowed = [e.lower() for e in getattr(settings, 'ALLOWED_ATTACHMENT_EXTENSIONS', [])]
+    allowed = [e.lower().lstrip('.') for e in configured]
     if allowed and extension not in allowed:
         return Response(
             {'detail': f"File type '.{extension}' is not allowed."},
